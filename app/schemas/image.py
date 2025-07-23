@@ -11,3 +11,9 @@ class ImageOut(ImageCreate):
 
     class Config:
         from_attributes = True
+        
+class ImageUploadOut(BaseModel):
+    url: HttpUrl
+
+    class Config:
+        from_attributes = True

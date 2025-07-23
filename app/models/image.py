@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional
 from .utils import PyObjectId
 
@@ -9,6 +9,12 @@ class ImageModel(BaseModel):
     order: Optional[int] = None       # Position dans la galerie (1, 2, 3…)
 
     class Config:
-        allow_population_by_field_name = True
+        validate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {PyObjectId: str}
+        
+class ImageUploadOut(BaseModel):
+    url: HttpUrl
+
+    class Config:
+        from_attributes = True

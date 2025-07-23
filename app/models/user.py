@@ -8,6 +8,6 @@ class UserModel(BaseModel):
     is_active: bool = True
 
     class Config:
-        allow_population_by_field_name = True
+        validate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {PyObjectId: str}
