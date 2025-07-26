@@ -1,3 +1,4 @@
+#app/schemas/upload.py
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse
 from ..schemas.image import ImageUploadOut
