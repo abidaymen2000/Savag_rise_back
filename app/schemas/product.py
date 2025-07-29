@@ -2,6 +2,7 @@
 from pydantic import BaseModel, HttpUrl
 from typing import List, Optional, Dict
 
+from .variant import VariantCreate, VariantOut
 from .image import ImageCreate
 
 class ProductBase(BaseModel):
@@ -54,13 +55,13 @@ class ProductCreate(ProductBase):
     price: float
     in_stock: bool = True
     images: List[ImageCreate] = []
-
+    variants: Optional[List[VariantCreate]] = []
 class ProductOut(ProductBase):
     id: str
     price: float
     in_stock: bool
     images: List[ImageCreate] = []
-
+    variants: List[VariantOut] = []
     class Config:
         from_attributes = True
         

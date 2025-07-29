@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from .routers import users, products, upload
+
+from .routers import users, products, upload, variants, orders, auth
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Savage Rise E‑commerce API", servers=[{"url": "http://localhost:8000"}])
@@ -20,5 +21,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(upload.router)
 app.include_router(users.router)
 app.include_router(products.router)
-
-
+app.include_router(variants.router)
+app.include_router(orders.router)
+app.include_router(auth.router)

@@ -1,3 +1,4 @@
+# app/models/user.py
 from pydantic import BaseModel, Field, EmailStr
 from .utils import PyObjectId
 

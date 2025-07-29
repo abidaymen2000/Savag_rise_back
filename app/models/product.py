@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 
+from app.schemas.variant import VariantCreate
 from models.image import ImageModel
 from .utils import PyObjectId
 
@@ -58,7 +59,7 @@ class ProductModel(BaseModel):
 
     # Nouvelle section « images »
     images: List[ImageModel] = []   # liste d’objets ImageModel
-
+    variants: List[VariantCreate] = []
     class Config:
         validate_by_name = True
         arbitrary_types_allowed = True

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from typing import List
 
+
 from ..db import get_db
 from .. import crud
 from ..schemas.image import ImageUploadOut
@@ -50,7 +51,42 @@ async def upload_image_to_product(
     file: UploadFile = File(...),
     db=Depends(get_db),
 ):
-    # … ton code existant …
+    # 1) Vérifier l'ID et existence du produit
+    try:
+        oid = ObjectId(product_id)
+    except:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ID produit invalide")
+    prod = await db["products"].find_one({"_id": oid})
+    if not prod:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Produit non trouvé")
+
+    # 2) Vérifier le type de fichier
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Le fichier doit être une image")
+
+    # 3) Générer un nom unique et sauvegarder
+    ext = os.path.splitext(file.filename)[1]
+    filename = f"{uuid4()}{ext}"
+    upload_dir = os.path.join(os.getcwd(), "static", "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    path = os.path.join(upload_dir, filename)
+    content = await file.read()
+    with open(path, "wb") as f:
+        f.write(content)
+
+    # 4) Construire l'URL publique
+    url = f"{request.base_url}static/uploads/{filename}"
+
+    # 5) Calculer l'ordre et mettre à jour Mongo
+    current = prod.get("images", [])
+    next_order = len(current) + 1
+    image_doc = {"url": url, "alt_text": None, "order": next_order}
+    await db["products"].update_one(
+        {"_id": oid},
+        {"$push": {"images": image_doc}}
+    )
+
+    # 6) Retourner l'URL construite (string)
     return ImageUploadOut(url=url)
 
 
