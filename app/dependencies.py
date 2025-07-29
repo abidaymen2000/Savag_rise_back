@@ -15,7 +15,7 @@ from app.db import get_db
 bearer_scheme = HTTPBearer()
 
 ALGORITHM = "HS256"
-SECRET_KEY = settings.secret_key
+SECRET_KEY = settings.SECRET_KEY
 
 async def get_current_user(
     creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),

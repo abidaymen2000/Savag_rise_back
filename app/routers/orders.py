@@ -1,14 +1,16 @@
 # app/routers/orders.py
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Path
 from typing import List
 from bson import ObjectId
 
 from app.dependencies import get_current_user
+from app.utils.email import send_email
 
 from ..db import get_db
 from ..crud.order import create_order as crud_create_order, get_order, update_order_status, mark_paid
 from ..crud.products import decrement_variant_stock
 from ..schemas.order import OrderCreate, OrderOut
+from ..config import settings
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -20,34 +22,52 @@ def parse_oid(id_str: str) -> ObjectId:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "ID de commande invalide")
 
 
-@router.post(
-    "/",
-    response_model=OrderOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Créer une commande COD et mettre à jour le stock"
-)
+@router.post("/", response_model=OrderOut, status_code=201)
 async def api_create_order(
     order_in: OrderCreate,
+    background_tasks: BackgroundTasks,
     db=Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # 1) On décrémente le stock pour chaque item
-    for item in order_in.items:
-        prod_oid = parse_oid(item.product_id)
-        # décrémente ou lève 400 si stock insuffisant
-        await decrement_variant_stock(
-            db,
-            prod_oid,
-            item.color,
-            item.size,
-            item.qty,
-        )
+    # décrémente le stock
+    for it in order_in.items:
+        await decrement_variant_stock(db, ObjectId(it.product_id), it.color, it.size, it.qty)
 
-    # 2) On crée ensuite le document de commande
-    #    create_order renvoie un dict prêt à retourner
-    order_data = order_in.dict()
-    order_data["user_id"] = str(current_user["_id"])
-    new_order = await crud_create_order(db, order_data)
+    # prépare le payload
+    data = order_in.dict()
+    data["user_id"] = str(current_user["_id"])
+
+    # création de la commande
+    new_order = await crud_create_order(db, data)
+
+    # envoi d’un email à l’admin
+    subject = f"Nouvelle commande Savage Rise #{new_order['id']}"
+    body_lines = [
+        f"ID: {new_order['id']}",
+        f"User: {current_user['email']} ({data['user_id']})",
+        "",
+        "=== Items ==="
+    ]
+    for it in data["items"]:
+        body_lines.append(f"- {it['qty']}× {it['product_id']} | {it['color']} / {it['size']} @ {it['unit_price']}€")
+    body_lines += [
+        "",
+        "=== Shipping ===",
+        f"{data['shipping']['full_name']}",
+        f"{data['shipping']['address_line1']}",
+        f"{data['shipping'].get('address_line2','')}",
+        f"{data['shipping']['postal_code']} {data['shipping']['city']}",
+        f"{data['shipping']['country']}",
+        "",
+        f"Total: {new_order['total_amount']}€",
+    ]
+    background_tasks.add_task(
+        send_email,
+        subject,
+        settings.ADMIN_EMAIL,
+        "\n".join(body_lines),
+    )
+
     return new_order
 
 
