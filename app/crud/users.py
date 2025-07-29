@@ -1,3 +1,4 @@
+from typing import Optional
 from passlib.context import CryptContext
 from bson import ObjectId
 from app.schemas.user import UserCreate
@@ -30,3 +31,17 @@ async def mark_email_verified(db, user_id: str):
 
 async def get_user_by_id(db, oid: ObjectId):
     return await db["users"].find_one({"_id": oid})
+
+async def update_user_password(db, user_id: str, new_password: str) -> bool:
+    hashed = pwd_context.hash(new_password)
+    result = await db["users"].update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"hashed_password": hashed}}
+    )
+    return result.modified_count == 1
+
+async def get_user_by_email(db, email: str) -> Optional[dict]:
+    """
+    Récupère un utilisateur par email.
+    """
+    return await db["users"].find_one({"email": email})
