@@ -1,4 +1,5 @@
 # app/crud/product.py
+from typing import Any, Dict, List, Optional
 from bson import ObjectId
 from fastapi import HTTPException, status
 from fastapi.encoders import jsonable_encoder
@@ -110,3 +111,68 @@ async def decrement_variant_stock(
             )
         )
     return True
+
+# app/crud/products.py
+from typing import Optional, Dict, Any, List
+from bson import ObjectId
+
+async def search_products(
+    db,
+    text: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    style: Optional[str] = None,
+    season: Optional[str] = None,
+    target_audience: Optional[str] = None,
+    color: Optional[str] = None,
+    size: Optional[str] = None,
+    sort_by: str = "price",
+    sort_dir: int = 1,
+    skip: int = 0,
+    limit: int = 10
+) -> List[Dict[str, Any]]:
+    query: Dict[str, Any] = {}
+
+    # 1) Plein-texte
+    if text:
+        query["$text"] = {"$search": text}
+
+    # 2) Filtre prix
+    if min_price is not None or max_price is not None:
+        price_f: Dict[str, Any] = {}
+        if min_price is not None:
+            price_f["$gte"] = min_price
+        if max_price is not None:
+            price_f["$lte"] = max_price
+        query["price"] = price_f
+
+    # 3) Facettes standard
+    for field, val in (("style", style), ("season", season), ("target_audience", target_audience)):
+        if val:
+            query[field] = val
+
+    # 4) Variantes – on accepte un filtre insensible à la casse
+    if color or size:
+        elem: Dict[str, Any] = {}
+        if color:
+            elem["color"] = {"$regex": f"^{color}$", "$options": "i"}
+        if size:
+            elem["size"] = {"$regex": f"^{size}$", "$options": "i"}
+        query["variants"] = {"$elemMatch": elem}
+
+    # 5) Construction du curseur
+    cursor = db["products"].find(query)
+
+    # 6) Tri : si plein-texte, on peut trier par textScore
+    if text:
+        cursor = cursor.sort([("score", {"$meta": "textScore"})])
+    else:
+        cursor = cursor.sort(sort_by, sort_dir)
+
+    # 7) Pagination
+    cursor = cursor.skip(skip).limit(limit)
+
+    docs = await cursor.to_list(length=limit)
+    for d in docs:
+        d["id"] = str(d["_id"])
+    return docs

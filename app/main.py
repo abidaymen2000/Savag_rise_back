@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.startup import init_mongo
+
 from .routers import profile, products, upload, variants, orders, auth
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,6 +15,11 @@ app.add_middleware(
   allow_methods=["*"],
   allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def on_startup():
+    # Crée collections et index avant que l'app n'accepte des requêtes
+    await init_mongo()
 
 # Sert tout ce qui est dans ./static via /static
 app.mount("/static", StaticFiles(directory="static"), name="static")

@@ -107,3 +107,33 @@ async def api_mark_paid(
     oid = parse_oid(order_id)
     await mark_paid(db, oid)
     return {"message": "Paiement enregistré"}
+
+
+@router.patch(
+    "/{order_id}/cancel",
+    response_model=OrderOut,
+    status_code=status.HTTP_200_OK,
+    summary="Permet au client d'annuler sa commande si elle est encore en pending"
+)
+async def api_cancel_order(
+    order_id: str = Path(..., description="ID de la commande à annuler"),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    oid = parse_oid(order_id)
+    ord_doc = await get_order(db, oid)
+    if not ord_doc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Commande introuvable")
+    # Vérifie que c'est bien la commande du user
+    if ord_doc.get("user_id") != str(current_user["_id"]):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Vous ne pouvez annuler que vos propres commandes")
+    # La seule annulation autorisée est sur les commandes en 'pending'
+    if ord_doc.get("status") != "pending":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Commande non annulable (statut ≠ pending)")
+    # Passe le statut à 'cancelled'
+    await update_order_status(db, oid, "cancelled")
+    # Retourne la commande à jour
+    updated = await get_order(db, oid)
+    # Pydantic attend un champ 'id' en string
+    updated["id"] = str(updated["_id"])
+    return updated

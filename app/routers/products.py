@@ -1,9 +1,13 @@
 import os
 from uuid import uuid4
 from bson import ObjectId
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
-from typing import List
+from typing import List, Optional
+
+from pymongo import ASCENDING, DESCENDING
+
+from app.crud.products import search_products
 
 
 from ..db import get_db
@@ -28,66 +32,74 @@ async def list_products(skip: int = 0, limit: int = 10, db=Depends(get_db)):
         for p in prods
     ]
 
-@router.get("/{product_id}", response_model=ProductOut)
-async def read_product(product_id: str, db=Depends(get_db)):
-    try:
-        oid = ObjectId(product_id)
-    except:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ID produit invalide")
-    prod = await crud.get_product(db, product_id)
-    if not prod:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Produit non trouvé")
-    return ProductOut(id=str(prod["_id"]), **{k: v for k, v in prod.items() if k != "_id"})
-
-@router.post(
-    "/{product_id}/upload-image",
-    response_model=ImageUploadOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Upload une image puis l'ajoute à la collection du produit"
+@router.get(
+    "/search",
+    response_model=List[ProductOut],
+    summary="Recherche plein-texte + filtres + tri + pagination"
 )
-async def upload_image_to_product(
-    product_id: str,
-    request: Request,
-    file: UploadFile = File(...),
-    db=Depends(get_db),
+async def search_products(
+    text: Optional[str] = Query(None, description="Terme de recherche plein-texte"),
+    min_price: Optional[float] = Query(None, ge=0, description="Prix minimum"),
+    max_price: Optional[float] = Query(None, ge=0, description="Prix maximum"),
+    color:    Optional[str]   = Query(None, description="Filtrer par couleur de variant"),
+    size:     Optional[str]   = Query(None, description="Filtrer par taille de variant"),
+    skip:     int            = Query(0, ge=0, description="Offset pour pagination"),
+    limit:    int            = Query(10, ge=1, le=100, description="Nombre max de résultats"),
+    sort:     Optional[str]  = Query(
+        None,
+        regex="^(price|full_name):(asc|desc)$",
+        description="Ex : `price:asc` ou `full_name:desc`"
+    ),
+    db = Depends(get_db),
 ):
-    # 1) Vérifier l'ID et existence du produit
-    try:
-        oid = ObjectId(product_id)
-    except:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ID produit invalide")
-    prod = await db["products"].find_one({"_id": oid})
-    if not prod:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Produit non trouvé")
+    # 1) Construction du filtre
+    filt: dict = {}
+    if text:
+        filt["$text"] = {"$search": text}
+    if min_price is not None or max_price is not None:
+        pf: dict = {}
+        if min_price is not None:
+            pf["$gte"] = min_price
+        if max_price is not None:
+            pf["$lte"] = max_price
+        filt["price"] = pf
+    if color or size:
+        em: dict = {}
+        if color:
+            em["color"] = color
+        if size:
+            em["size"] = size
+        filt["variants"] = {"$elemMatch": em}
 
-    # 2) Vérifier le type de fichier
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Le fichier doit être une image")
+    # 2) Pipeline d’agrégation
+    pipeline = []
+    if filt:
+        pipeline.append({"$match": filt})
 
-    # 3) Générer un nom unique et sauvegarder
-    ext = os.path.splitext(file.filename)[1]
-    filename = f"{uuid4()}{ext}"
-    upload_dir = os.path.join(os.getcwd(), "static", "uploads")
-    os.makedirs(upload_dir, exist_ok=True)
-    path = os.path.join(upload_dir, filename)
-    content = await file.read()
-    with open(path, "wb") as f:
-        f.write(content)
+    # 3) Tri
+    if sort:
+        field, direction = sort.split(":")
+        dir_flag = ASCENDING if direction == "asc" else DESCENDING
+        pipeline.append({"$sort": {field: dir_flag}})
 
-    # 4) Construire l'URL publique
-    url = f"{request.base_url}static/uploads/{filename}"
+    # 4) Pagination
+    pipeline += [
+        {"$skip": skip},
+        {"$limit": limit},
+    ]
 
-    # 5) Calculer l'ordre et mettre à jour Mongo
-    current = prod.get("images", [])
-    next_order = len(current) + 1
-    image_doc = {"url": url, "alt_text": None, "order": next_order}
-    await db["products"].update_one(
-        {"_id": oid},
-        {"$push": {"images": image_doc}}
-    )
+    # 5) Exécution
+    raw = await db["products"].aggregate(pipeline).to_list(length=limit)
 
-    # 6) Retourner l'URL construite (string)
-    return ImageUploadOut(url=url)
+    # 6) Transformation en ProductOut
+    results = []
+    for doc in raw:
+        # Convertir ObjectId -> str
+        doc["id"] = str(doc["_id"])
+        # On peut laisser _id en plus, Pydantic l’ignorera grâce à from_attributes
+        results.append(doc)
+
+    return results
 
 
 @router.put(
@@ -163,3 +175,4 @@ async def delete_product(
 
     await crud.delete_product(db, product_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+

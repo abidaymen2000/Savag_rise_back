@@ -1,6 +1,7 @@
 # app/crud/order.py
 from datetime import datetime
 from bson import ObjectId
+from fastapi import HTTPException,status
 
 
 async def create_order(db, order_data: dict):
@@ -70,3 +71,9 @@ async def get_orders_for_user(db, user_id: str):
         d["id"] = str(d["_id"])
         result.append(d)
     return result
+
+def parse_oid(id_str: str) -> ObjectId:
+    try:
+        return ObjectId(id_str)
+    except:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ID de commande invalide")
