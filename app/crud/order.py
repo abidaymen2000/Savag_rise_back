@@ -60,3 +60,13 @@ async def mark_paid(db, order_id: ObjectId):
         {"_id": order_id},
         {"$set": {"payment_status": "paid", "updated_at": datetime.utcnow()}}
     )
+    
+async def get_orders_for_user(db, user_id: str):
+    cursor = db["orders"].find({"user_id": user_id}).sort("created_at", -1)
+    docs = await cursor.to_list(length=100)
+    # on transforme _id → id et renvoie le modèle
+    result = []
+    for d in docs:
+        d["id"] = str(d["_id"])
+        result.append(d)
+    return result

@@ -22,50 +22,45 @@ def parse_oid(id_str: str) -> ObjectId:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "ID de commande invalide")
 
 
-@router.post("/", response_model=OrderOut, status_code=201)
+@router.post("/", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
 async def api_create_order(
     order_in: OrderCreate,
     background_tasks: BackgroundTasks,
     db=Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # décrémente le stock
+    # 1) On décrémente le stock (ou on lève 400)
     for it in order_in.items:
-        await decrement_variant_stock(db, ObjectId(it.product_id), it.color, it.size, it.qty)
+        prod_oid = ObjectId(it.product_id)
+        await decrement_variant_stock(db, prod_oid, it.color, it.size, it.qty)
 
-    # prépare le payload
-    data = order_in.dict()
+    # 2) On prépare la donnée et on crée la commande
+    data = order_in.dict(exclude={"user_id"})
     data["user_id"] = str(current_user["_id"])
-
-    # création de la commande
     new_order = await crud_create_order(db, data)
 
-    # envoi d’un email à l’admin
-    subject = f"Nouvelle commande Savage Rise #{new_order['id']}"
-    body_lines = [
-        f"ID: {new_order['id']}",
-        f"User: {current_user['email']} ({data['user_id']})",
-        "",
-        "=== Items ==="
-    ]
+    # 3) On notifie l’admin par email
+    subject = f"Nouvelle commande #{new_order['id']}"
+    body = [f"Commande {new_order['id']} par {current_user['email']}", "", "Articles :"]
     for it in data["items"]:
-        body_lines.append(f"- {it['qty']}× {it['product_id']} | {it['color']} / {it['size']} @ {it['unit_price']}€")
-    body_lines += [
+        body.append(f"  • {it['qty']}× {it['product_id']} ({it['color']}/{it['size']})")
+    body += [
         "",
-        "=== Shipping ===",
+        "Livraison :",
         f"{data['shipping']['full_name']}",
         f"{data['shipping']['address_line1']}",
         f"{data['shipping'].get('address_line2','')}",
         f"{data['shipping']['postal_code']} {data['shipping']['city']}",
         f"{data['shipping']['country']}",
         "",
-        f"Total: {new_order['total_amount']}€",
+        f"Total : {new_order['total_amount']} €"
     ]
+
     background_tasks.add_task(
         send_email,
         subject,
         settings.ADMIN_EMAIL,
-        "\n".join(body_lines),
+        "\n".join(body)
     )
 
     return new_order

@@ -74,29 +74,39 @@ async def get_variants(db, product_id: ObjectId):
     return prod.get("variants", []) if prod else []
 
 async def decrement_variant_stock(
-    db, product_oid: ObjectId, color: str, size: str, qty: int
+    db, product_id: ObjectId, color: str, size: str, qty: int
 ):
     """
-    Décrémente le stock du variant (color,size) de qty unités,
-    seulement si le stock courant >= qty.
+    Décrémente de qty le stock de la variante (color, size),
+    seulement si la variante existe ET que son stock >= qty.
+    En cas d’échec, lève une HTTPException 400.
     """
     res = await db["products"].update_one(
         {
-            "_id": product_oid,
-            "variants.color": color,
-            "variants.size": size,
-            # on vérifie qu'on a assez de stock
-            "variants.stock": {"$gte": qty},
+            "_id": product_id,
+            # On ne fait matcher qu’UNE entrée de variants qui 
+            # doit simultanément correspondre à color, size et avoir assez de stock
+            "variants": {
+                "$elemMatch": {
+                    "color": color,
+                    "size": size,
+                    "stock": { "$gte": qty },
+                }
+            },
         },
         {
-            # $inc négatif pour décrémenter
-            "$inc": {"variants.$.stock": -qty}
+            # On décrémente atomiquement le stock de l’élément matché
+            "$inc": { "variants.$.stock": -qty }
         },
     )
+
     if res.modified_count == 0:
-        # soit le variant est absent, soit stock insufisant
+        # soit la variante n’existe pas, soit stock insuffisant
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Variant {color}/{size} introuvable ou stock < {qty}"
+            detail=(
+                f"Impossible de commander {qty}× {color}/{size} : "
+                "variante introuvable ou stock insuffisant"
+            )
         )
-    return
+    return True

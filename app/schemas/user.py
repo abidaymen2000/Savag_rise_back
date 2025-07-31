@@ -1,5 +1,6 @@
 # app/schemas/user.py
-from pydantic import BaseModel, EmailStr
+from typing import Optional
+from pydantic import BaseModel, EmailStr, Field
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -20,3 +21,13 @@ class PasswordReset(BaseModel):
     
     class Config:
         from_attributes = True
+        
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    # tu peux ajouter d’autres champs modifiables, ex. phone, name…
+    full_name: Optional[str] = None
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(..., min_length=6)
+    new_password: str     = Field(..., min_length=6)
