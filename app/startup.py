@@ -39,3 +39,20 @@ async def init_mongo():
         await db.create_collection("orders")
         # index sur user_id pour retrouver rapidement les commandes d’un user
     # etc.
+
+    if "reviews" not in existing:
+        await db.create_collection("reviews")
+        # indexer sur product_id et user_id pour accélérer recherches et filtres
+        await db["reviews"].create_index("product_id")
+        await db["reviews"].create_index("user_id")
+
+
+    if "wishlist" not in existing:
+        await db.create_collection("wishlist")
+        # indexer sur user_id pour retrouver rapidement la liste de chaque utilisateur
+        await db["wishlist"].create_index("user_id")
+        # index unique sur (user_id, product_id) pour empêcher les doublons
+        await db["wishlist"].create_index(
+            [("user_id", 1), ("product_id", 1)],
+            unique=True
+        )

@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.startup import init_mongo
 
-from .routers import profile, products, upload, variants, orders, auth
+from .routers import profile, products, upload, variants, orders, auth, reviews, wishlist
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Savage Rise E‑commerce API", servers=[{"url": "http://localhost:8000"}])
@@ -31,3 +31,5 @@ app.include_router(products.router)
 app.include_router(variants.router)
 app.include_router(orders.router)
 app.include_router(auth.router)
+app.include_router(reviews.router)
+app.include_router(wishlist.router)
