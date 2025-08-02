@@ -1,53 +1,138 @@
 # app/routers/variants.py
-from fastapi import APIRouter, Depends, HTTPException, status, Path
-from bson import ObjectId
+
 from typing import List
-from ..schemas.variant import VariantCreate, VariantOut
+from bson import ObjectId
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status,
+    Path,
+    UploadFile,
+    File,
+)
 from ..db import get_db
-from ..crud.products import add_variant, get_variants, update_variant_stock
+from ..schemas.variant import VariantCreate, VariantOut
+from ..schemas.image import ImageOut
+from ..crud.variant import (
+    add_variant,
+    get_variants,
+    update_variant_stock,
+    add_image_to_variant,
+    remove_image_from_variant,
+)
+from ..utils.imagekit_upload import upload_to_imagekit
 
-router = APIRouter(prefix="/products/{product_id}/variants", tags=["variants"])
+router = APIRouter(
+    prefix="/products/{product_id}/variants",
+    tags=["variants"],
+)
 
-def parse_oid(pid: str) -> ObjectId:
+
+def parse_oid(pid: str) -> str:
     try:
-        return ObjectId(pid)
+        ObjectId(pid)
+        return pid
     except:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ID invalide")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ID produit invalide"
+        )
+
 
 @router.get("/", response_model=List[VariantOut])
 async def list_variants(
     product_id: str = Path(...), db=Depends(get_db)
 ):
-    oid = parse_oid(product_id)
-    return await get_variants(db, oid)
+    pid = parse_oid(product_id)
+    return await get_variants(db, pid)
+
 
 @router.post(
     "/",
     response_model=VariantOut,
-    status_code=status.HTTP_201_CREATED
+    status_code=status.HTTP_201_CREATED,
+    summary="Créer une variante (couleur + tailles)"
 )
 async def create_variant(
     product_id: str,
     v: VariantCreate,
-    db=Depends(get_db)
+    db=Depends(get_db),
 ):
-    oid = parse_oid(product_id)
-    # Optionnel : vérifier qu’aucun variant identique n’existe déjà
-    return await add_variant(db, oid, v.dict())
+    """
+    Body attendu :
+    {
+      "color": "noir",
+      "sizes": [{"size":"S","stock":7},…],
+      "images": []
+    }
+    """
+    pid = parse_oid(product_id)
+    return await add_variant(db, pid, v.dict())
+
 
 @router.patch(
-    "/{color}/{size}/stock",
-    status_code=status.HTTP_204_NO_CONTENT
+    "/{color}/sizes/{size}/stock",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Met à jour le stock d'une taille pour une couleur"
 )
 async def change_stock(
     product_id: str,
     color: str,
     size: str,
     new_stock: int,
-    db=Depends(get_db)
+    db=Depends(get_db),
 ):
-    oid = parse_oid(product_id)
-    modified = await update_variant_stock(db, oid, color, size, new_stock)
+    pid = parse_oid(product_id)
+    modified = await update_variant_stock(db, pid, color, size, new_stock)
     if not modified:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Variant non trouvé")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Variante ou taille non trouvée"
+        )
+    return
+
+
+@router.post(
+    "/{color}/images",
+    response_model=ImageOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Uploader une image pour la variante couleur"
+)
+async def upload_variant_color_image(
+    product_id: str,
+    color: str,
+    file: UploadFile = File(...),
+    db=Depends(get_db),
+):
+    """
+    Multipart/form-data { file: <l'image> }
+    """
+    pid = parse_oid(product_id)
+
+    # 1) upload sur ImageKit
+    url = await upload_to_imagekit(file)
+
+    # 2) stocker l'objet image { id, url } dans variants.$.images
+    return await add_image_to_variant(db, pid, color, {"url": url})
+
+
+@router.delete(
+    "/{color}/images/{image_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Supprimer une image de la variante couleur"
+)
+async def delete_variant_color_image(
+    product_id: str,
+    color: str,
+    image_id: str,
+    db=Depends(get_db),
+):
+    pid = parse_oid(product_id)
+    success = await remove_image_from_variant(db, pid, color, image_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image non trouvée"
+        )
     return

@@ -57,8 +57,6 @@ class ProductModel(BaseModel):
     # Entretien
     care_instructions: str
 
-    # Nouvelle section « images »
-    images: List[ImageModel] = []   # liste d’objets ImageModel
     variants: List[VariantCreate] = []
     class Config:
         validate_by_name = True

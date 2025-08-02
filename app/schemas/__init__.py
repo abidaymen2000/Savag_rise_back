@@ -1,17 +1,18 @@
 from .order import OrderItem
-from .variant import VariantOut
+from .variant import VariantOut, SizeStock, VariantCreate
 from .user import UserBase, UserCreate, UserOut, PasswordResetRequest, PasswordReset, UserUpdate, PasswordChange
-from .image import ImageCreate, ImageOut
+from .image import ImageCreate, ImageOut, ImageUploadOut,MultipleImageUploadOut
 from .product import ProductBase, ProductCreate, ProductOut, ProductUpdate
 from .review import ReviewBase, ReviewCreate, ReviewUpdate, ReviewOut, ReviewStats
 from .wishlist import WishlistCreate, WishlistOut, WishlistList
-
+from .category import CategoryBase, CategoryCreate, CategoryUpdate, CategoryOut
 __all__ = [
     "UserBase", "UserCreate", "UserOut", "PasswordResetRequest", "PasswordReset","PasswordReset","UserUpdate","PasswordChange" 
-    "ImageCreate", "ImageOut",
+    "ImageCreate", "ImageOut","ImageUploadOut","MultipleImageUploadOut"
     "ProductBase", "ProductCreate", "ProductOut", "ProductUpdate",
-    "VariantBase", "VariantCreate", "VariantOut",
+    "SizeStock", "VariantCreate", "VariantOut",
     "OrderItem", "OrderCreate", "OrderOut",
     "ReviewBase", "ReviewCreate", "ReviewUpdate", "ReviewOut","ReviewStats",
     "WishlistCreate", "WishlistOut", "WishlistList",
+    "CategoryBase", "CategoryCreate", "CategoryUpdate", "CategoryOut",
 ]

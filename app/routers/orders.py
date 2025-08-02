@@ -3,12 +3,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, 
 from typing import List
 from bson import ObjectId
 
+from app.crud.variant import decrement_variant_stock
 from app.dependencies import get_current_user
 from app.utils.email import send_email
 
 from ..db import get_db
 from ..crud.order import create_order as crud_create_order, get_order, update_order_status, mark_paid
-from ..crud.products import decrement_variant_stock
 from ..schemas.order import OrderCreate, OrderOut
 from ..config import settings
 

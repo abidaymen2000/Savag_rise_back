@@ -1,4 +1,5 @@
 # app/config.py
+from pydantic import AnyHttpUrl, SecretStr
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -23,6 +24,11 @@ class Settings(BaseSettings):
     # Front-end URL (pour lien de vérification)
     FRONTEND_URL: str
 
+    # 🔥 Ajoutez ces lignes pour ImageKit 🔥
+    imagekit_public_key: SecretStr
+    imagekit_private_key: SecretStr
+    imagekit_url_endpoint: AnyHttpUrl
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

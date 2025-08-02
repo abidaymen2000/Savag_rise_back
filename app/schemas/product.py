@@ -1,5 +1,5 @@
 #app/schemas/product.py
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional, Dict
 
 from .variant import VariantCreate, VariantOut
@@ -50,17 +50,16 @@ class ProductBase(BaseModel):
 
     # Entretien
     care_instructions: Optional[str] = None
+    categories: List[str] = Field(default_factory=list, description="Liste des catégories associées au produit")
 
 class ProductCreate(ProductBase):
     price: float
     in_stock: bool = True
-    images: List[ImageCreate] = []
     variants: Optional[List[VariantCreate]] = []
 class ProductOut(ProductBase):
     id: str
     price: float
     in_stock: bool
-    images: List[ImageCreate] = []
     variants: List[VariantOut] = []
     class Config:
         from_attributes = True
@@ -104,3 +103,5 @@ class ProductUpdate(BaseModel):
 
     price: Optional[float] = None
     in_stock: Optional[bool] = None
+
+    categories: Optional[List[str]]

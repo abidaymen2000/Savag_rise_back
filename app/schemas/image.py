@@ -1,5 +1,6 @@
+# app/schemas/image.py
 from pydantic import BaseModel, HttpUrl
-from typing import Optional
+from typing import List, Optional
 
 class ImageCreate(BaseModel):
     url: HttpUrl
@@ -8,7 +9,7 @@ class ImageCreate(BaseModel):
 
 class ImageOut(ImageCreate):
     id: str
-
+    url: HttpUrl
     class Config:
         from_attributes = True
         
@@ -17,3 +18,6 @@ class ImageUploadOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class MultipleImageUploadOut(BaseModel):
+    urls: List[str]
