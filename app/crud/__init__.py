@@ -4,4 +4,4 @@ from .order import create_order, get_order, update_order_status, mark_paid, pars
 from .review import create_review, get_review, update_review, delete_review, list_reviews, get_review_stats
 from .wishlist import add_to_wishlist, remove_from_wishlist, list_wishlist
 from .category import list_categories, get_category, create_category, update_category, delete_category
-from .variant import add_image_to_variant, remove_image_from_variant, update_variant_stock, add_variant, get_variants, decrement_variant_stock
+from .variant import add_image_to_variant, remove_image_from_variant, update_variant_stock, add_variant, get_variants, decrement_variant_stock,increment_variant_stock

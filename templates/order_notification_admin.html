@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Nouvelle commande #{{ order.id }}</title>
+</head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0"
+         style="max-width:600px;margin:20px auto;background:#fff;border-radius:8px;overflow:hidden;">
+    <!-- En-tête -->
+    <tr>
+      <td style="background:#111827;text-align:center;padding:16px;color:#fff;">
+        <h2 style="margin:0;font-size:20px;">Nouvelle commande #{{ order.id }}</h2>
+      </td>
+    </tr>
+
+    <!-- Date & client -->
+    <tr>
+      <td style="padding:12px 20px;border-bottom:1px solid #E5E7EB;">
+        <p style="margin:0;color:#4B5563;">
+          <strong>Date :</strong> {{ order.date }}<br>
+          <strong>Client :</strong> {{ order.user_email }}<br>
+          <strong>Email :</strong> {{ order.user_email }}
+        </p>
+      </td>
+    </tr>
+
+    <!-- Tableau des articles -->
+    <tr>
+      <td style="padding:20px;">
+        <table width="100%" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+          <thead>
+            <tr style="background:#F3F4F6;">
+              <th align="left">Produit (ID)</th>
+              <th align="center">Qté</th>
+              <th align="center">Couleur/Taille</th>
+              <th align="right">Montant</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for it in order["items"] %}
+            <tr>
+              <td>{{ it.name }}<br><small style="color:#6B7280;">{{ it.product_id }}</small></td>
+              <td align="center">{{ it.qty }}</td>
+              <td align="center">{{ it.color }} / {{ it.size }}</td>
+              <td align="right">{{ "%.2f"|format(it.qty * it.unit_price) }} €</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3" align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;">
+                <strong>Total</strong>
+              </td>
+              <td align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;">
+                <strong>{{ "%.2f"|format(order.total_amount) }} €</strong>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Informations de livraison -->
+    <tr>
+      <td style="padding:20px;border-top:1px solid #E5E7EB;">
+        <h3 style="margin:0 0 8px;color:#111827;font-size:16px;">Adresse de livraison</h3>
+        <p style="margin:0;color:#4B5563;">
+          {{ order.shipping.full_name }}<br>
+          {{ order.shipping.address_line1 }}<br>
+          {% if order.shipping.address_line2 %}{{ order.shipping.address_line2 }}<br>{% endif %}
+          {{ order.shipping.postal_code }} {{ order.shipping.city }}<br>
+          {{ order.shipping.country }}
+        </p>
+      </td>
+    </tr>
+
+    <!-- Lien vers l’admin panel -->
+    <tr>
+      <td style="text-align:center;padding:20px;">
+        <a href="{{ admin_panel_url }}/orders/{{ order.id }}"
+           style="display:inline-block;background:#111827;color:#fff;text-decoration:none;
+                  padding:12px 20px;border-radius:6px;font-size:14px;">
+          Voir la commande dans le back-office
+        </a>
+      </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+      <td style="background:#F3F4F6;padding:12px;text-align:center;color:#6B7280;font-size:12px;">
+        Savage Rise – Notification Admin
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

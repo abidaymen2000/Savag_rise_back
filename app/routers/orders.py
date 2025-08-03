@@ -1,9 +1,11 @@
 # app/routers/orders.py
+from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Path
 from typing import List
 from bson import ObjectId
+from jinja2 import Environment, FileSystemLoader
 
-from app.crud.variant import decrement_variant_stock
+from app.crud.variant import decrement_variant_stock, increment_variant_stock
 from app.dependencies import get_current_user
 from app.utils.email import send_email
 
@@ -14,6 +16,10 @@ from ..config import settings
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
+jinja_env = Environment(
+    loader=FileSystemLoader("templates"),
+    autoescape=True
+)
 
 def parse_oid(id_str: str) -> ObjectId:
     try:
@@ -29,38 +35,113 @@ async def api_create_order(
     db=Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # 1) On décrémente le stock (ou on lève 400)
+    # 1) Décrémente le stock
     for it in order_in.items:
-        prod_oid = ObjectId(it.product_id)
-        await decrement_variant_stock(db, prod_oid, it.color, it.size, it.qty)
+        await decrement_variant_stock(
+            db,
+            ObjectId(it.product_id),
+            it.color,
+            it.size,
+            it.qty
+        )
 
-    # 2) On prépare la donnée et on crée la commande
+    # 2) Crée la commande en base
     data = order_in.dict(exclude={"user_id"})
     data["user_id"] = str(current_user["_id"])
     new_order = await crud_create_order(db, data)
 
-    # 3) On notifie l’admin par email
-    subject = f"Nouvelle commande #{new_order['id']}"
-    body = [f"Commande {new_order['id']} par {current_user['email']}", "", "Articles :"]
-    for it in data["items"]:
-        body.append(f"  • {it['qty']}× {it['product_id']} ({it['color']}/{it['size']})")
-    body += [
-        "",
-        "Livraison :",
-        f"{data['shipping']['full_name']}",
-        f"{data['shipping']['address_line1']}",
-        f"{data['shipping'].get('address_line2','')}",
-        f"{data['shipping']['postal_code']} {data['shipping']['city']}",
-        f"{data['shipping']['country']}",
-        "",
-        f"Total : {new_order['total_amount']} €"
+    # 3) Prépare order_data pour les templates
+    order_data = {
+        "id": new_order["id"],
+        "date": datetime.utcnow().strftime("%d/%m/%Y %H:%M"),
+        "user_email": current_user["email"],
+        "items": [
+            {
+                "product_id": it["product_id"],
+                "name": (await db["products"]
+                             .find_one({"_id": ObjectId(it["product_id"])}, {"full_name": 1}))
+                             ["full_name"],
+                "color": it["color"],
+                "size": it["size"],
+                "qty": it["qty"],
+                "unit_price": it["unit_price"],
+            }
+            for it in new_order["items"]
+        ],
+        "total_amount": new_order["total_amount"],
+        "shipping": new_order["shipping"],
+    }
+
+    # 4) Rendu HTML + texte brut pour le client
+    tpl_client = jinja_env.get_template("order_confirmation.html")
+    html_client = tpl_client.render(
+        order=order_data,
+        logo_url=settings.LOGO_URL,
+        support_email=settings.ADMIN_EMAIL
+    )
+
+    text_lines = [
+        f"Commande #{order_data['id']} - {order_data['date']}",
+        "Articles :"
     ]
+    for it in order_data["items"]:
+        text_lines.append(
+            f" - {it['qty']}× {it['name']} ({it['color']}/{it['size']}): "
+            f"{it['qty'] * it['unit_price']:.2f}€"
+        )
+    text_lines += [
+        f"Total : {order_data['total_amount']:.2f} €",
+        "",
+        "Adresse de livraison :",
+        order_data["shipping"]["full_name"],
+        order_data["shipping"]["address_line1"],
+        order_data["shipping"].get("address_line2", ""),
+        f"{order_data['shipping']['postal_code']} {order_data['shipping']['city']}",
+        order_data["shipping"]["country"],
+    ]
+    text_client = "\n".join(text_lines)
 
     background_tasks.add_task(
         send_email,
-        subject,
-        settings.ADMIN_EMAIL,
-        "\n".join(body)
+        subject=f"Votre commande #{order_data['id']} – Savage Rise",
+        recipient=current_user["email"],
+        body=text_client,
+        html=html_client
+    )
+
+    # 5) Rendu HTML + texte brut pour l’admin
+    tpl_admin = jinja_env.get_template("order_notification_admin.html")
+    html_admin = tpl_admin.render(
+        order=order_data,
+        logo_url=settings.LOGO_URL,
+        admin_panel_url=settings.FRONTEND_URL
+    )
+
+    text_admin = "\n".join([
+        f"Nouvelle commande #{order_data['id']} par {order_data['user_email']}",
+        "",
+        *[
+            f"- {it['qty']}× {it['name']} ({it['color']}/{it['size']}): "
+            f"{it['qty'] * it['unit_price']:.2f}€"
+            for it in order_data["items"]
+        ],
+        "",
+        f"Total : {order_data['total_amount']:.2f} €",
+        "",
+        "Adresse de livraison :",
+        order_data["shipping"]["full_name"],
+        order_data["shipping"]["address_line1"],
+        order_data["shipping"].get("address_line2", ""),
+        f"{order_data['shipping']['postal_code']} {order_data['shipping']['city']}",
+        order_data["shipping"]["country"],
+    ])
+
+    background_tasks.add_task(
+        send_email,
+        subject=f"Nouvelle commande #{order_data['id']}",
+        recipient=settings.ADMIN_EMAIL,
+        body=text_admin,
+        html=html_admin
     )
 
     return new_order
@@ -124,16 +205,24 @@ async def api_cancel_order(
     ord_doc = await get_order(db, oid)
     if not ord_doc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Commande introuvable")
-    # Vérifie que c'est bien la commande du user
-    if ord_doc.get("user_id") != str(current_user["_id"]):
+    if ord_doc["user_id"] != str(current_user["_id"]):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Vous ne pouvez annuler que vos propres commandes")
-    # La seule annulation autorisée est sur les commandes en 'pending'
-    if ord_doc.get("status") != "pending":
+    if ord_doc["status"] != "pending":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Commande non annulable (statut ≠ pending)")
-    # Passe le statut à 'cancelled'
+
+    # 1) RESTAURATION DU STOCK
+    for it in ord_doc["items"]:
+        await increment_variant_stock(
+            db,
+            it["product_id"],
+            it["color"],
+            it["size"],
+            it["qty"]
+        )
+
+    # 2) PASSAGE EN STATUS 'cancelled'
     await update_order_status(db, oid, "cancelled")
-    # Retourne la commande à jour
+
+    # 3) RENVOI DE LA COMMANDE À JOUR
     updated = await get_order(db, oid)
-    # Pydantic attend un champ 'id' en string
-    updated["id"] = str(updated["_id"])
     return updated

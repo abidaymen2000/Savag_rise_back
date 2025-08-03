@@ -110,3 +110,32 @@ async def remove_image_from_variant(
             detail="Image introuvable"
         )
     return True
+
+# 4) increment le stock d'une taille d'une couleur (pour les commandes)
+async def increment_variant_stock(
+    db, product_id: str, color: str, size: str, qty: int
+) -> bool:
+    """
+    Ré-incrémente stock de `qty` pour la couleur/taille donnée.
+    Utile en cas d’annulation de commande.
+    """
+    pid = ObjectId(product_id)
+    res = await db["products"].update_one(
+        {
+            "_id": pid,
+            "variants": {
+                "$elemMatch": {
+                    "color": color,
+                    "sizes": { "$elemMatch": { "size": size } }
+                }
+            }
+        },
+        {"$inc": {"variants.$.sizes.$[s].stock": qty}},
+        array_filters=[{"s.size": size}]
+    )
+    if res.modified_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Impossible de restaurer le stock pour {color}/{size}"
+        )
+    return True
