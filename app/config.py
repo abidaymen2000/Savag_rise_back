@@ -1,5 +1,5 @@
 # app/config.py
-from pydantic import AnyHttpUrl, SecretStr
+from pydantic import AnyHttpUrl, HttpUrl, SecretStr
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     imagekit_public_key: SecretStr
     imagekit_private_key: SecretStr
     imagekit_url_endpoint: AnyHttpUrl
+    
+    LOGO_URL: HttpUrl = "https://ik.imagekit.io/deuxug3j0/email-images/SavageRiseEmail.png?updatedAt=1754182758176"
     
     class Config:
         env_file = ".env"

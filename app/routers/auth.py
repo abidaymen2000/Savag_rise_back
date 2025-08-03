@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from fastapi.security import OAuth2PasswordRequestForm
+from jinja2 import Environment, FileSystemLoader
 from jose import jwt, JWTError
 from bson import ObjectId
 
@@ -15,6 +16,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+
+# Configurez Jinja2 pour charger les templates
+jinja_env = Environment(
+    loader=FileSystemLoader("templates"),  # dossier où est verify_email.html
+    autoescape=True
+)
 
 def create_access_token(sub: str, expires_delta: timedelta) -> str:
     to_encode = {
@@ -35,30 +42,43 @@ async def signup(
     background_tasks: BackgroundTasks,
     db=Depends(get_db),
 ):
-        # 0) Vérification d’unicité de l’email
+    # 0) Email unique
     if await get_user_by_email(db, user_in.email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cet email est déjà utilisé."
-        )
-    # 1) Création du user (is_active=False tant que non vérifié)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cet email est déjà utilisé.")
+
+    # 1) Création user (is_active=False)
     created = await create_user(db, user_in)
     user_id = str(created["_id"])
 
-    # 2) Génération du token de vérification (valable 1h)
+    # 2) Génération du token (1h)
     token = create_access_token(user_id, timedelta(hours=1))
     verify_link = f"{settings.FRONTEND_URL}/verify-email?token={token}"
 
-    # 3) Envoi de l’email en tâche de fond
-    subject = "Bienvenue chez Savage Rise – Vérifiez votre email"
-    body = (
+    # 3) Rendu du template HTML
+    template = jinja_env.get_template("verify_email.html")
+    html_body = template.render(
+        user_email=user_in.email,
+        verification_link=verify_link,
+        logo_url=settings.LOGO_URL
+    )
+
+    # 4) Fallback texte brut (optionnel)
+    text_body = (
         f"Bonjour {user_in.email},\n\n"
         "Merci pour votre inscription ! Cliquez sur ce lien pour vérifier votre adresse email :\n\n"
         f"{verify_link}\n\n"
         "Ce lien expire dans 1 heure.\n\n"
         "L'équipe Savage Rise"
     )
-    background_tasks.add_task(send_email, subject, user_in.email, body)
+
+    # 5) Envoi en background (assurez-vous que send_email peut prendre html_body)
+    background_tasks.add_task(
+        send_email,
+        subject="Bienvenue chez Savage Rise – Vérifiez votre email",
+        recipient=user_in.email,
+        body=text_body,
+        html=html_body              # passez le HTML au handler
+    )
 
     return UserOut(id=user_id, email=user_in.email, is_active=False)
 
