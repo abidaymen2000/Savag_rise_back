@@ -85,12 +85,32 @@ async def products_by_category(
     limit: int = Query(10, ge=1, le=100),
     db=Depends(get_db)
 ):
-    cursor = db["products"].find({"categories": category_name}).skip(skip).limit(limit)
+    cursor = db["products"] \
+        .find({"categories": category_name}) \
+        .skip(skip).limit(limit)
     docs = await cursor.to_list(length=limit)
-    return [
-        ProductOut(**{**d, "id": str(d["_id"])})
-        for d in docs
-    ]
+
+    results = []
+    for d in docs:
+        # 1) Commence par extraire tous les champs sauf _id
+        payload = {k: v for k, v in d.items() if k != "_id"}
+        # 2) Ajoute le champ id racine
+        payload["id"] = str(d["_id"])
+
+        # 3) Pour chaque variante, remappe les images
+        for variant in payload.get("variants", []):
+            remapped_imgs = []
+            for img in variant.get("images", []):
+                remapped_imgs.append({
+                    "id": str(img["_id"]),
+                    **{k: v for k, v in img.items() if k != "_id"}
+                })
+            variant["images"] = remapped_imgs
+
+        # 4) Instancie ton Pydantic model
+        results.append(ProductOut(**payload))
+
+    return results
 
 @router.post(
     "/{category_id}/products/{product_id}",
@@ -107,11 +127,26 @@ async def add_product_to_category(
     if not cat:
         raise HTTPException(404, "Catégorie non trouvée")
 
-    # 2) Injecter cat["name"] dans le produit
+    # 2) Injecter la catégorie dans le produit
     updated = await add_category_to_product(db, product_id, cat["name"])
     if not updated:
         raise HTTPException(404, "Produit non trouvé")
 
-    # 3) Retourner le produit mis à jour (convertir l’ObjectId en str)
-    updated["id"] = str(updated["_id"])
-    return ProductOut(**updated)
+    # 3) Préparer la payload pour ProductOut
+    #   - convertir le _id racine en id
+    payload = {k: v for k, v in updated.items() if k != "_id"}
+    payload["id"] = str(updated["_id"])
+
+    #   - pour chaque variante, remapper images[_id -> id]
+    for variant in payload.get("variants", []):
+        remapped = []
+        for img_doc in variant.get("images", []):
+            # on extrait l'ObjectId et on stringify en id
+            remapped.append({
+                "id": str(img_doc["_id"]),
+                **{k: v for k, v in img_doc.items() if k != "_id"}
+            })
+        variant["images"] = remapped
+
+    # 4) Retourner via Pydantic
+    return ProductOut(**payload)
