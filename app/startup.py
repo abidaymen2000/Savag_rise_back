@@ -8,7 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 logger = logging.getLogger("startup")
 # on force TLS, on donne le CA cert bundle fourni par certifi
 client = AsyncIOMotorClient(
-    settings.mongodb_url,
+    settings.MONGODB_URL,
     tls=True,
     tlsCAFile=certifi.where(),
     serverSelectionTimeoutMS=10000  # 10s timeout max
