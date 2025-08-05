@@ -2,22 +2,8 @@
 import logging
 from .config import settings
 from .db import client
-import certifi
-from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger("startup")
-# on force TLS, on donne le CA cert bundle fourni par certifi
-client = AsyncIOMotorClient(
-    settings.MONGODB_URL,
-    tls=True,
-    tlsCAFile=certifi.where(),
-    # =========== ajouts ===========
-    tlsAllowInvalidCertificates=True,
-    tlsAllowInvalidHostnames=True,
-    # =============================
-    serverSelectionTimeoutMS=10000
-)
-db = client[settings.MONGODB_DB_NAME]
 
 async def init_mongo():
     """
