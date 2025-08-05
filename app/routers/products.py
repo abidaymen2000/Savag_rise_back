@@ -27,11 +27,32 @@ async def create_product(product: ProductCreate, db=Depends(get_db)):
 @router.get("/", response_model=List[ProductOut])
 async def list_products(skip: int = 0, limit: int = 10, db=Depends(get_db)):
     prods = await crud.get_products(db, skip, limit)
-    return [
-        ProductOut(id=str(p["_id"]), **{k: v for k, v in p.items() if k != "_id"})
-        for p in prods
-    ]
+    results = []
+    for p in prods:
+        # 1) Extraire tous les champs sauf _id
+        payload = {k: v for k, v in p.items() if k != "_id"}
+        # 2) Ajouter l'id racine
+        payload["id"] = str(p["_id"])
 
+        # 3) Remapper les variants et leurs images
+        remapped_variants = []
+        for var in payload.get("variants", []):
+            # Pour chaque image, on crée {"id": ..., **autres champs}
+            remapped_images = [
+                {
+                    "id": str(img_doc["_id"]),
+                    **{k: v for k, v in img_doc.items() if k != "_id"}
+                }
+                for img_doc in var.get("images", [])
+            ]
+            var["images"] = remapped_images
+            remapped_variants.append(var)
+        payload["variants"] = remapped_variants
+
+        # 4) Instancier le modèle Pydantic
+        results.append(ProductOut(**payload))
+
+    return results
 
 @router.get(
     "/search",
