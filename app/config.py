@@ -1,4 +1,5 @@
 # app/config.py
+import certifi
 from pydantic import AnyHttpUrl, HttpUrl, SecretStr
 from pydantic_settings import BaseSettings
 
