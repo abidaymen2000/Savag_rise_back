@@ -45,7 +45,20 @@ async def list_variants(
     product_id: str = Path(...), db=Depends(get_db)
 ):
     pid = parse_oid(product_id)
-    return await get_variants(db, pid)
+    raw_vars = await get_variants(db, product_id)
+    remapped = []
+    for var in raw_vars:
+       # Remapper les images de chaque variante :
+        imgs = var.get("images", [])
+        var["images"] = [
+            {
+                "id": str(img_doc["_id"]),
+                **{k: v for k, v in img_doc.items() if k != "_id"}
+            }
+            for img_doc in imgs
+        ]
+        remapped.append(var)
+    return remapped
 
 
 @router.post(
