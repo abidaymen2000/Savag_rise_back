@@ -13,7 +13,7 @@ client = AsyncIOMotorClient(
     tlsCAFile=certifi.where(),
     serverSelectionTimeoutMS=10000  # 10s timeout max
 )
-db = client[settings.mongodb_db_name]
+db = client[settings.MONGODB_DB_NAME]
 
 async def init_mongo():
     """
