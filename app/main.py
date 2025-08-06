@@ -5,7 +5,9 @@ from app.startup import init_mongo
 from .routers import profile, products, upload, variants, orders, auth, reviews, wishlist, categories
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Savage Rise E‑commerce API", servers=[{"url": "http://localhost:8000"}])
+app = FastAPI(title="Savage Rise E‑commerce API",  servers=[
+        {"url": "https://savage-rise-backend-d86a05fb19d4.herokuapp.com"}
+    ])
 
 app.add_middleware(
   CORSMiddleware,
