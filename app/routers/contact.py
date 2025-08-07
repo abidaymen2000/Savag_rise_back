@@ -1,9 +1,10 @@
 from fastapi import APIRouter, BackgroundTasks, status
 from fastapi.responses import JSONResponse
-from jinja2 import Environment, FileSystemLoader, evalcontextfilter, Markup, escape
+from jinja2 import Environment, FileSystemLoader, pass_eval_context
 from app.schemas.contact import ContactMessage
 from app.utils.email import send_email
 from app.config import settings
+from markupsafe import Markup, escape
 
 router = APIRouter(tags=["contact"])
 
@@ -13,9 +14,11 @@ jinja_env = Environment(
     autoescape=True
 )
 
-@evalcontextfilter
+@pass_eval_context
 def nl2br(eval_ctx, value: str) -> Markup:
-    """Transforme les sauts de ligne en <br> pour l’email HTML."""
+    """
+    Transforme les sauts de ligne en <br> pour l’email HTML.
+    """
     escaped = escape(value)
     result = escaped.replace("\n", "<br>\n")
     return Markup(result)
