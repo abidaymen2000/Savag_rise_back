@@ -5,9 +5,11 @@ from fastapi import (
     APIRouter, Depends, HTTPException, Query,
     status, Response
 )
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pymongo import ASCENDING, DESCENDING
+
+from app.crud.product import get_product
 
 from ..db import get_db
 from .. import crud
@@ -159,3 +161,50 @@ async def delete_product(
 
     await crud.delete_product(db, product_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@router.get(
+    "/{product_id}",
+    response_model=ProductOut,
+    summary="Récupère un produit par son ID"
+)
+async def get_product_endpoint(
+    product_id: str,
+    db=Depends(get_db)
+):
+    # 1) Valide l'ID
+    try:
+        ObjectId(product_id)
+    except:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ID invalide"
+        )
+
+    # 2) Récupère en base
+    prod = await get_product(db, product_id)
+    if not prod:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Produit non trouvé"
+        )
+
+    # 3) Remappe _id → id et construit le payload
+    payload: Dict[str, Any] = {k: v for k, v in prod.items() if k != "_id"}
+    payload["id"] = str(prod["_id"])
+
+    # 4) Remappe les variants et leurs images
+    remapped_variants = []
+    for var in payload.get("variants", []):
+        remapped_images = [
+            {
+                "id": str(img_doc["_id"]),
+                **{ik: iv for ik, iv in img_doc.items() if ik != "_id"}
+            }
+            for img_doc in var.get("images", [])
+        ]
+        var["images"] = remapped_images
+        remapped_variants.append(var)
+    payload["variants"] = remapped_variants
+
+    # 5) Retourne via Pydantic
+    return ProductOut(**payload)
