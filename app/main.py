@@ -1,4 +1,6 @@
+from typing import Literal
 from fastapi import FastAPI
+from pydantic import BaseModel
 
 from app.startup import init_mongo
 
@@ -16,6 +18,20 @@ app.add_middleware(
   allow_methods=["*"],
   allow_headers=["*"],
 )
+
+# Health-check model
+class HealthStatus(BaseModel):
+    status: Literal["online", "offline"]
+
+#  ←– Ajoute ce endpoint
+@app.get(
+    "/health",
+    response_model=HealthStatus,
+    summary="Vérifie la santé de l'API",
+    operation_id="checkHealth"
+)
+async def check_health():
+    return {"status": "online"}
 
 @app.on_event("startup")
 async def on_startup():
