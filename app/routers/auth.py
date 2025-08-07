@@ -80,8 +80,12 @@ async def signup(
         html=html_body              # passez le HTML au handler
     )
 
-    return UserOut(id=user_id, email=user_in.email, is_active=False)
-
+    return UserOut(
+        id=user_id,
+        email=created["email"],
+        full_name=created.get("full_name"),
+        is_active=created["is_active"],
+    )
 
 @router.post(
     "/token",

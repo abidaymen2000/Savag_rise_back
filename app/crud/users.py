@@ -13,6 +13,8 @@ async def create_user(db, user_in: UserCreate):
         "is_active": False,      # bloqué tant que non vérifié
         "is_verified": False
     }
+    if user_in.full_name:
+        doc["full_name"] = user_in.full_name
     res = await db["users"].insert_one(doc)
     return await db["users"].find_one({"_id": res.inserted_id})
 
