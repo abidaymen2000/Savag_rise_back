@@ -23,7 +23,7 @@ async def add_review(
     # Construis ton dict d’insertion à partir du payload
     data = payload.dict(exclude_none=True)
     # Injecte l’ID de l’utilisateur authentifié
-    data["user_id"] = current_user.id
+    data["user_id"] = str(current_user.get("_id"))
     doc = await create_review(db, product_id, data)
     return ReviewOut(**doc, id=str(doc["_id"]))
 
@@ -46,20 +46,23 @@ async def review_stats(
 ):
     return await get_review_stats(db, product_id)
 
-@router.get(
-    "/myreview",
-    response_model=List[ReviewOut],
-    summary="Mes avis"
-)
+@router.get("/myreview", response_model=List[ReviewOut], summary="Mes avis")
 async def get_my_reviews(
-    db = Depends(get_db),
-    current_user = Depends(get_current_user),
-    skip: int  = Query(0, ge=0),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),  # retourne un dict Mongo
+    skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100)
 ):
-    docs = await list_user_reviews(db, current_user.id, skip, limit)
-    return [ ReviewOut(**d, id=str(d["_id"])) for d in docs ]
-
+    """
+    Retourne tous les reviews créés par l'utilisateur connecté.
+    """
+    # Récupère l'ID depuis le dict current_user
+    user_id = str(current_user.get("_id"))
+    docs = await list_user_reviews(db, user_id, skip, limit)
+    return [
+        ReviewOut(**d, id=str(d["_id"]))
+        for d in docs
+    ]
 @router.get("/{review_id}", response_model=ReviewOut)
 async def read_review(product_id: str, review_id: str, db=Depends(get_db)):
     doc = await get_review(db, product_id, review_id)
