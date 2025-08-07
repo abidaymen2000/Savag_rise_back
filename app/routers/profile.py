@@ -1,9 +1,10 @@
 # app/routers/profile.py
 
-from fastapi import APIRouter, Depends, HTTPException, status, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Path
 from typing import List
 from bson import ObjectId
 
+from app.crud.review import list_user_reviews
 from app.dependencies import get_current_user
 from app.db import get_db
 from app.crud.users import (
@@ -12,6 +13,7 @@ from app.crud.users import (
     change_user_password,
 )
 from app.crud.order import get_order, get_orders_for_user
+from app.schemas.review import ReviewOut
 from app.schemas.user import UserOut, UserUpdate, PasswordChange
 from app.schemas.order import OrderOut
 
@@ -39,6 +41,28 @@ async def read_profile(
         is_active=current_user["is_active"],
     )
 
+@router.get(
+    "/reviews",
+    response_model=List[ReviewOut],
+    summary="Récupérer tous mes avis"
+)
+async def get_my_reviews(
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100)
+):
+    """
+    Retourne la liste des reviews que l’utilisateur connecté
+    a publiées, tous produits confondus.
+    """
+    # current_user est un dict Mongo, on en extrait l’_id
+    user_id = str(current_user.get("_id"))
+    docs = await list_user_reviews(db, user_id, skip, limit)
+    return [
+        ReviewOut(**d, id=str(d["_id"]))
+        for d in docs
+    ]
 
 @router.patch(
     "/me",
