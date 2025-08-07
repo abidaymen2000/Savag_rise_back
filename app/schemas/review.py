@@ -9,7 +9,8 @@ class ReviewBase(BaseModel):
     comment: Optional[str]
 
 class ReviewCreate(ReviewBase):
-    user_id: str = Field(..., description="ID de l’acheteur")
+    pass   
+    
 
 class ReviewUpdate(BaseModel):
     rating: Optional[int] = Field(None, ge=1, le=5)

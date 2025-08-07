@@ -57,3 +57,15 @@ async def get_review_stats(db, product_id: str):
     if res:
         return {"average_rating": res[0]["average_rating"], "count": res[0]["count"]}
     return {"average_rating": None, "count": 0}
+
+async def list_user_reviews(
+    db: AsyncIOMotorDatabase,
+    user_id: str,
+    skip: int = 0,
+    limit: int = 10
+):
+    """
+    Renvoie la liste des reviews pour un user donné.
+    """
+    cursor = db["reviews"].find({"user_id": user_id})
+    return await cursor.sort("created_at", -1).skip(skip).to_list(length=limit)

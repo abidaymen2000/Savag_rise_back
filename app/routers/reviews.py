@@ -3,10 +3,10 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
 from app.schemas.review import ReviewCreate, ReviewOut, ReviewUpdate, ReviewStats
 from app.crud.review import (
-    create_review, get_review, update_review, delete_review,
+    create_review, get_review, list_user_reviews, update_review, delete_review,
     list_reviews, get_review_stats
 )
-from app.dependencies import get_db  # votre dépendance Mongo
+from app.dependencies import get_current_user, get_db  # votre dépendance Mongo
 
 router = APIRouter(
     prefix="/products/{product_id}/reviews",
@@ -17,12 +17,14 @@ router = APIRouter(
 async def add_review(
     product_id: str,
     payload: ReviewCreate,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
-    # (optionnel) vérifier que le produit existe :
-    # if not await db["products"].find_one({"_id": ObjectId(product_id)}):
-    #     raise HTTPException(404, "Produit non trouvé")
-    doc = await create_review(db, product_id, payload.dict())
+    # Construis ton dict d’insertion à partir du payload
+    data = payload.dict(exclude_none=True)
+    # Injecte l’ID de l’utilisateur authentifié
+    data["user_id"] = current_user.id
+    doc = await create_review(db, product_id, data)
     return ReviewOut(**doc, id=str(doc["_id"]))
 
 @router.get("/", response_model=List[ReviewOut])
@@ -66,3 +68,19 @@ async def edit_review(
 @router.delete("/{review_id}", status_code=204)
 async def remove_review(product_id: str, review_id: str, db=Depends(get_db)):
     await delete_review(db, product_id, review_id)
+
+@router.get("/myreview", response_model=List[ReviewOut], summary="Mes avis")
+async def get_my_reviews(
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100)
+):
+    """
+    Retourne tous les reviews créés par l'utilisateur connecté.
+    """
+    docs = await list_user_reviews(db, current_user.id, skip, limit)
+    return [
+        ReviewOut(**d, id=str(d["_id"]))
+        for d in docs
+    ]
