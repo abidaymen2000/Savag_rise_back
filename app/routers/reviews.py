@@ -46,6 +46,20 @@ async def review_stats(
 ):
     return await get_review_stats(db, product_id)
 
+@router.get(
+    "/myreview",
+    response_model=List[ReviewOut],
+    summary="Mes avis"
+)
+async def get_my_reviews(
+    db = Depends(get_db),
+    current_user = Depends(get_current_user),
+    skip: int  = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100)
+):
+    docs = await list_user_reviews(db, current_user.id, skip, limit)
+    return [ ReviewOut(**d, id=str(d["_id"])) for d in docs ]
+
 @router.get("/{review_id}", response_model=ReviewOut)
 async def read_review(product_id: str, review_id: str, db=Depends(get_db)):
     doc = await get_review(db, product_id, review_id)
@@ -69,18 +83,3 @@ async def edit_review(
 async def remove_review(product_id: str, review_id: str, db=Depends(get_db)):
     await delete_review(db, product_id, review_id)
 
-@router.get("/myreview", response_model=List[ReviewOut], summary="Mes avis")
-async def get_my_reviews(
-    db=Depends(get_db),
-    current_user=Depends(get_current_user),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100)
-):
-    """
-    Retourne tous les reviews créés par l'utilisateur connecté.
-    """
-    docs = await list_user_reviews(db, current_user.id, skip, limit)
-    return [
-        ReviewOut(**d, id=str(d["_id"]))
-        for d in docs
-    ]
