@@ -6,6 +6,7 @@ from .product import ProductBase, ProductCreate, ProductOut, ProductUpdate
 from .review import ReviewBase, ReviewCreate, ReviewUpdate, ReviewOut, ReviewStats
 from .wishlist import WishlistCreate, WishlistOut, WishlistList
 from .category import CategoryBase, CategoryCreate, CategoryUpdate, CategoryOut
+from .contact import ContactMessage
 __all__ = [
     "UserBase", "UserCreate", "UserOut", "PasswordResetRequest", "PasswordReset","PasswordReset","UserUpdate","PasswordChange" 
     "ImageCreate", "ImageOut","ImageUploadOut","MultipleImageUploadOut"
@@ -15,4 +16,5 @@ __all__ = [
     "ReviewBase", "ReviewCreate", "ReviewUpdate", "ReviewOut","ReviewStats",
     "WishlistCreate", "WishlistOut", "WishlistList",
     "CategoryBase", "CategoryCreate", "CategoryUpdate", "CategoryOut",
+    "ContactMessage"
 ]
