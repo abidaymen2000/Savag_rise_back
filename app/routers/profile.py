@@ -38,6 +38,7 @@ async def read_profile(
     return UserOut(
         id=str(current_user["_id"]),
         email=current_user["email"],
+        full_name=current_user.get("full_name"),
         is_active=current_user["is_active"],
     )
 
