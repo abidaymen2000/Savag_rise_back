@@ -87,10 +87,10 @@ async def api_create_order(
     for it in order_data["items"]:
         text_lines.append(
             f" - {it['qty']}× {it['name']} ({it['color']}/{it['size']}): "
-            f"{it['qty'] * it['unit_price']:.2f}€"
+            f"{it['qty'] * it['unit_price']:.2f}TND"
         )
     text_lines += [
-        f"Total : {order_data['total_amount']:.2f} €",
+        f"Total : {order_data['total_amount']:.2f} TND",
         "",
         "Adresse de livraison :",
         order_data["shipping"]["full_name"],
@@ -122,11 +122,11 @@ async def api_create_order(
         "",
         *[
             f"- {it['qty']}× {it['name']} ({it['color']}/{it['size']}): "
-            f"{it['qty'] * it['unit_price']:.2f}€"
+            f"{it['qty'] * it['unit_price']:.2f}TND"
             for it in order_data["items"]
         ],
         "",
-        f"Total : {order_data['total_amount']:.2f} €",
+        f"Total : {order_data['total_amount']:.2f} TND",
         "",
         "Adresse de livraison :",
         order_data["shipping"]["full_name"],
@@ -198,6 +198,7 @@ async def api_mark_paid(
 )
 async def api_cancel_order(
     order_id: str = Path(..., description="ID de la commande à annuler"),
+    background_tasks: BackgroundTasks = None,   # <-- ajouté
     db=Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -210,11 +211,11 @@ async def api_cancel_order(
     if ord_doc["status"] != "pending":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Commande non annulable (statut ≠ pending)")
 
-    # 1) RESTAURATION DU STOCK
+    # 1) RESTAURATION DU STOCK (⚠️ product_id -> ObjectId)
     for it in ord_doc["items"]:
         await increment_variant_stock(
             db,
-            it["product_id"],
+            ObjectId(it["product_id"]),   # <-- important
             it["color"],
             it["size"],
             it["qty"]
@@ -223,6 +224,80 @@ async def api_cancel_order(
     # 2) PASSAGE EN STATUS 'cancelled'
     await update_order_status(db, oid, "cancelled")
 
-    # 3) RENVOI DE LA COMMANDE À JOUR
+    # 3) RECHARGER LA COMMANDE
     updated = await get_order(db, oid)
+
+    # 4) EMAILS : client + admin
+    #    Prépare une structure 'order_data' similaire à la création
+    order_data = {
+        "id": updated.get("id", str(oid)),
+        "date": datetime.utcnow().strftime("%d/%m/%Y %H:%M"),
+        "user_email": current_user["email"],
+        "items": [],
+        "total_amount": updated["total_amount"],
+        "shipping": updated["shipping"],
+    }
+
+    for it in updated["items"]:
+        prod = await db["products"].find_one({"_id": ObjectId(it["product_id"])}, {"full_name": 1})
+        order_data["items"].append({
+            "product_id": it["product_id"],
+            "name": (prod or {}).get("full_name", it["product_id"]),
+            "color": it["color"],
+            "size": it["size"],
+            "qty": it["qty"],
+            "unit_price": it["unit_price"],
+        })
+
+    # -- Client
+    tpl_client = jinja_env.get_template("order_cancellation_client.html")
+    html_client = tpl_client.render(
+        order=order_data,
+        logo_url=settings.LOGO_URL,
+        support_email=settings.ADMIN_EMAIL
+    )
+    text_client = "\n".join([
+        f"Annulation de votre commande #{order_data['id']} - {order_data['date']}",
+        "",
+        "Détails des articles annulés :",
+        *[
+            f"- {it['qty']}× {it['name']} ({it['color']}/{it['size']}): {it['qty']*it['unit_price']:.2f}TND"
+            for it in order_data["items"]
+        ],
+        "",
+        f"Montant total : {order_data['total_amount']:.2f} TND",
+    ])
+    background_tasks.add_task(
+        send_email,
+        subject=f"Commande #{order_data['id']} annulée – Savage Rise",
+        recipient=current_user["email"],
+        body=text_client,
+        html=html_client
+    )
+
+    # -- Admin
+    tpl_admin = jinja_env.get_template("order_cancellation_admin.html")
+    html_admin = tpl_admin.render(
+        order=order_data,
+        logo_url=settings.LOGO_URL,
+        admin_panel_url=settings.FRONTEND_URL
+    )
+    text_admin = "\n".join([
+        f"Commande annulée #{order_data['id']} par {order_data['user_email']}",
+        "",
+        *[
+            f"- {it['qty']}× {it['name']} ({it['color']}/{it['size']}): {it['qty']*it['unit_price']:.2f}TND"
+            for it in order_data["items"]
+        ],
+        "",
+        f"Total : {order_data['total_amount']:.2f} TND",
+    ])
+    background_tasks.add_task(
+        send_email,
+        subject=f"Commande annulée #{order_data['id']}",
+        recipient=settings.ADMIN_EMAIL,
+        body=text_admin,
+        html=html_admin
+    )
+
     return updated
