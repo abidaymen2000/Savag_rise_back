@@ -1,6 +1,7 @@
 # app/routers/auth.py
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jinja2 import Environment, FileSystemLoader
 from jose import jwt, JWTError
@@ -52,7 +53,7 @@ async def signup(
 
     # 2) Génération du token (1h)
     token = create_access_token(user_id, timedelta(hours=1))
-    verify_link = f"{settings.FRONTEND_URL}/verify-email?token={token}"
+    verify_link = f"{settings.BACKEND_URL}/auth/verify-email?token={token}"
 
     # 3) Rendu du template HTML
     template = jinja_env.get_template("verify_email.html")
@@ -110,31 +111,26 @@ async def login_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.get(
-    "/verify-email",
-    summary="Vérifier un email via token",
-    status_code=status.HTTP_200_OK
-)
-async def verify_email(
-    token: str = Query(..., description="Token de vérification reçu par email"),
-    db=Depends(get_db),
-):
-    # Décodage du token
+@router.get("/verify-email", summary="Vérifier un email et auto-login")
+async def verify_email(token: str = Query(...), db=Depends(get_db)):
+    # 1) Décodage du token reçu par email
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         if not user_id:
             raise JWTError()
     except JWTError:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail="Token invalide ou expiré"
-        )
+        # renvoie vers home avec erreur
+        return RedirectResponse(f"{settings.FRONTEND_URL}/?verified=error", status_code=302)
 
-    # Activation du user en base
+    # 2) Marquer l'email comme vérifié
     await mark_email_verified(db, user_id)
 
-    return {"message": "Votre email a bien été vérifié. Vous pouvez maintenant vous connecter."}
+    # 3) Générer un access token “classique”
+    access_token = create_access_token(user_id, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+
+    # 4) Rediriger vers le front avec le token dans la query
+    return RedirectResponse(f"{settings.FRONTEND_URL}/verify-success?token={access_token}", status_code=302)
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED,
              summary="Demande de reset de mot de passe")
