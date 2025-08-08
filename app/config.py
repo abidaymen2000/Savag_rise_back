@@ -24,7 +24,8 @@ class Settings(BaseSettings):
 
     # Front-end URL (pour lien de vérification)
     FRONTEND_URL: str
-
+    BACKEND_URL:str
+    
     # 🔥 Ajoutez ces lignes pour ImageKit 🔥
     imagekit_public_key: SecretStr
     imagekit_private_key: SecretStr
