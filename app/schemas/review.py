@@ -20,6 +20,7 @@ class ReviewUpdate(BaseModel):
 class ReviewOut(ReviewBase):
     id: str
     user_id: str
+    product_id: str 
     created_at: datetime
     updated_at: datetime
 

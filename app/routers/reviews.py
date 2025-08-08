@@ -1,4 +1,6 @@
 # app/routers/reviews.py
+import datetime
+from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
 from app.schemas.review import ReviewCreate, ReviewOut, ReviewUpdate, ReviewStats
@@ -7,6 +9,7 @@ from app.crud.review import (
     list_reviews, get_review_stats
 )
 from app.dependencies import get_current_user, get_db  # votre dépendance Mongo
+from fastapi import status
 
 router = APIRouter(
     prefix="/products/{product_id}/reviews",
@@ -75,14 +78,36 @@ async def edit_review(
     product_id: str,
     review_id: str,
     payload: ReviewUpdate,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),        # <-- protège
 ):
-    doc = await update_review(db, product_id, review_id, {k: v for k, v in payload.dict().items() if v is not None})
+    # 1) récupérer l'avis
+    doc = await db["reviews"].find_one({"_id": ObjectId(review_id), "product_id": product_id})
     if not doc:
         raise HTTPException(404, "Avis non trouvé")
-    return ReviewOut(**doc, id=str(doc["_id"]))
+    # 2) autorisation
+    if str(doc["user_id"]) != str(current_user["_id"]):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Action non autorisée")
+
+    # 3) update
+    data = {k: v for k, v in payload.dict().items() if v is not None}
+    data["updated_at"] = datetime.utcnow()
+    await db["reviews"].update_one({"_id": doc["_id"]}, {"$set": data})
+    updated = await db["reviews"].find_one({"_id": doc["_id"]})
+    return ReviewOut(**updated, id=str(updated["_id"]))
 
 @router.delete("/{review_id}", status_code=204)
-async def remove_review(product_id: str, review_id: str, db=Depends(get_db)):
-    await delete_review(db, product_id, review_id)
+async def remove_review(
+    product_id: str,
+    review_id: str,
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),        # <-- protège
+):
+    doc = await db["reviews"].find_one({"_id": ObjectId(review_id), "product_id": product_id})
+    if not doc:
+        raise HTTPException(404, "Avis non trouvé")
+    if str(doc["user_id"]) != str(current_user["_id"]):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Action non autorisée")
+
+    await db["reviews"].delete_one({"_id": doc["_id"]})
 
