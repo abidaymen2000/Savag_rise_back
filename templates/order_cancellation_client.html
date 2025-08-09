@@ -33,7 +33,7 @@
                             <td>{{ it.name }}<br><small style="color:#6B7280;">{{ it.product_id }}</small></td>
                             <td align="center">{{ it.qty }}</td>
                             <td align="center">{{ it.color }} / {{ it.size }}</td>
-                            <td align="right">{{ "%.2f"|format(it.qty * it.unit_price) }} €</td>
+                            <td align="right">{{ "%.2f"|format(it.qty * it.unit_price) }} TND</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -42,7 +42,7 @@
                             <td colspan="3" align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;">
                                 <strong>Total</strong></td>
                             <td align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;"><strong>{{
-                                    "%.2f"|format(order.total_amount) }} €</strong></td>
+                                    "%.2f"|format(order.total_amount) }} TND</strong></td>
                         </tr>
                     </tfoot>
                 </table>
