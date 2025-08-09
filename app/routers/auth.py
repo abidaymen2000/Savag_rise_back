@@ -84,7 +84,7 @@ async def signup(
     return UserOut(
         id=user_id,
         email=created["email"],
-        full_name=created.get("full_name"),
+        full_name=created["full_name"],
         is_active=created["is_active"],
     )
 
