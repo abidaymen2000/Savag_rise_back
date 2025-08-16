@@ -59,3 +59,10 @@ async def init_mongo():
             [("user_id", 1), ("product_id", 1)],
             unique=True
         )
+
+
+    if "promocodes" not in existing:
+        await db.create_collection("promocodes")
+
+    # index unique sur le code
+    await db["promocodes"].create_index("code", unique=True)        

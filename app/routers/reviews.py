@@ -1,20 +1,42 @@
 # app/routers/reviews.py
 import datetime
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, status
 from typing import List, Optional
+
 from app.schemas.review import ReviewCreate, ReviewOut, ReviewUpdate, ReviewStats
 from app.crud.review import (
     create_review, get_review, list_user_reviews, update_review, delete_review,
     list_reviews, get_review_stats
 )
 from app.dependencies import get_current_user, get_db  # votre dépendance Mongo
-from fastapi import status
 
 router = APIRouter(
     prefix="/products/{product_id}/reviews",
     tags=["Reviews"]
 )
+
+# ---------- helper: ajoute le champ 'author' ----------
+async def _attach_author(db, doc: dict) -> dict:
+    """
+    Ajoute doc['author'] = full_name ou email de l'utilisateur,
+    avec fallback 'Utilisateur'. Ajoute aussi doc['id'] si présent.
+    """
+    user = None
+    try:
+        user = await db["users"].find_one(
+            {"_id": ObjectId(str(doc.get("user_id")))},
+            {"full_name": 1, "email": 1}
+        )
+    except Exception:
+        user = None
+
+    doc["author"] = (user or {}).get("full_name") or (user or {}).get("email") or "Utilisateur"
+    if "_id" in doc:
+        doc["id"] = str(doc["_id"])
+    return doc
+# -----------------------------------------------------
+
 
 @router.post("/", response_model=ReviewOut, status_code=201)
 async def add_review(
@@ -28,7 +50,9 @@ async def add_review(
     # Injecte l’ID de l’utilisateur authentifié
     data["user_id"] = str(current_user.get("_id"))
     doc = await create_review(db, product_id, data)
-    return ReviewOut(**doc, id=str(doc["_id"]))
+    doc = await _attach_author(db, doc)
+    return ReviewOut(**doc)
+
 
 @router.get("/", response_model=List[ReviewOut])
 async def get_reviews(
@@ -40,7 +64,12 @@ async def get_reviews(
     db=Depends(get_db)
 ):
     docs = await list_reviews(db, product_id, rating, skip, limit, sort_best)
-    return [ ReviewOut(**d, id=str(d["_id"])) for d in docs ]
+    out: List[ReviewOut] = []
+    for d in docs:
+        d = await _attach_author(db, d)
+        out.append(ReviewOut(**d))
+    return out
+
 
 @router.get("/stats", response_model=ReviewStats)
 async def review_stats(
@@ -49,29 +78,35 @@ async def review_stats(
 ):
     return await get_review_stats(db, product_id)
 
+
 @router.get("/myreview", response_model=List[ReviewOut], summary="Mes avis")
 async def get_my_reviews(
+    product_id: str,
     db=Depends(get_db),
-    current_user=Depends(get_current_user),  # retourne un dict Mongo
+    current_user=Depends(get_current_user),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100)
 ):
     """
     Retourne tous les reviews créés par l'utilisateur connecté.
     """
-    # Récupère l'ID depuis le dict current_user
     user_id = str(current_user.get("_id"))
     docs = await list_user_reviews(db, user_id, skip, limit)
-    return [
-        ReviewOut(**d, id=str(d["_id"]))
-        for d in docs
-    ]
+    out: List[ReviewOut] = []
+    for d in docs:
+        d = await _attach_author(db, d)
+        out.append(ReviewOut(**d))
+    return out
+
+
 @router.get("/{review_id}", response_model=ReviewOut)
 async def read_review(product_id: str, review_id: str, db=Depends(get_db)):
     doc = await get_review(db, product_id, review_id)
     if not doc:
         raise HTTPException(404, "Avis non trouvé")
-    return ReviewOut(**doc, id=str(doc["_id"]))
+    doc = await _attach_author(db, doc)
+    return ReviewOut(**doc)
+
 
 @router.put("/{review_id}", response_model=ReviewOut)
 async def edit_review(
@@ -91,10 +126,12 @@ async def edit_review(
 
     # 3) update
     data = {k: v for k, v in payload.dict().items() if v is not None}
-    data["updated_at"] = datetime.utcnow()
+    data["updated_at"] = datetime.datetime.utcnow()
     await db["reviews"].update_one({"_id": doc["_id"]}, {"$set": data})
     updated = await db["reviews"].find_one({"_id": doc["_id"]})
-    return ReviewOut(**updated, id=str(updated["_id"]))
+    updated = await _attach_author(db, updated)
+    return ReviewOut(**updated)
+
 
 @router.delete("/{review_id}", status_code=204)
 async def remove_review(
@@ -110,4 +147,3 @@ async def remove_review(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Action non autorisée")
 
     await db["reviews"].delete_one({"_id": doc["_id"]})
-

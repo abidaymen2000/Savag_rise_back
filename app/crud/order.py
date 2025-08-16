@@ -6,28 +6,58 @@ from fastapi import HTTPException,status
 
 async def create_order(db, order_data: dict):
     """
-    Crée une commande en base :
-    - order_data doit contenir au minimum les clés :
-       'user_id', 'shipping', 'items', 'payment_method'
-    - 'shipping' est un dict contenant full_name, email, phone, address_line1, etc.
-    - 'items' est une liste de dict { product_id, color, size, qty, unit_price }
+    Crée une commande en base.
+    Respecte les champs calculés par le routeur si fournis:
+    - subtotal, discount_value, promo_code, total_amount
+    Sinon, calcule un subtotal et met total_amount = subtotal.
     """
     now = datetime.utcnow()
-    # Construction du document à insérer
+
+    # 1) Champs requis
+    user_id = order_data.get("user_id")
+    shipping = order_data["shipping"]
+    items = order_data["items"]
+    payment_method = order_data.get("payment_method", "cod")
+
+    # 2) Subtotal (si non fourni)
+    subtotal = order_data.get("subtotal")
+    if subtotal is None:
+        subtotal = sum(i["unit_price"] * i["qty"] for i in items)
+
+    # 3) Total & remise
+    total_amount = order_data.get("total_amount", subtotal)
+    discount_value = order_data.get("discount_value")
+    if discount_value is None:
+        # calcule implicite si on ne l'a pas passé
+        discount_value = max(0.0, float(subtotal) - float(total_amount))
+
+    # 4) Code promo (optionnel)
+    promo_code = order_data.get("promo_code")
+
+    # 5) Construction du document
     order_doc = {
-        "user_id": order_data.get("user_id"),             # lien vers l'user
-        "shipping": order_data["shipping"],               # adresse + contact
-        "items": order_data["items"],                     # lignes de commande
-        "payment_method": order_data.get("payment_method", "cod"),
-        "total_amount": sum(i["unit_price"] * i["qty"] for i in order_data["items"]),
-        "status": "pending",                              # nouvelle commande
-        "payment_status": "unpaid",                       # COD non encaissé
+        "user_id": user_id,
+        "shipping": shipping,
+        "items": items,
+        "payment_method": payment_method,
+
+        # Remises / totaux
+        "subtotal": float(subtotal),
+        "discount_value": float(discount_value),
+        "promo_code": promo_code,
+        "total_amount": float(total_amount),
+
+        # Statuts
+        "status": "pending",
+        "payment_status": "unpaid",
+
+        # Dates
         "created_at": now,
         "updated_at": now,
     }
-    # Insertion et récupération de l'_id
+
+    # 6) Insertion
     res = await db["orders"].insert_one(order_doc)
-    # On rattache l'id stringifié pour le retour
     order_doc["id"] = str(res.inserted_id)
     return order_doc
 

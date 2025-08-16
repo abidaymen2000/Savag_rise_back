@@ -1,60 +1,94 @@
 <!DOCTYPE html>
 <html lang="fr">
-
 <head>
-    <meta charset="UTF-8">
-    <title>Commande annulée #{{ order.id }}</title>
+  <meta charset="UTF-8">
+  <title>Commande annulée #{{ order.id }}</title>
 </head>
-
 <body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5;">
-    <table align="center" width="100%" cellpadding="0" cellspacing="0"
-        style="max-width:600px;margin:20px auto;background:#fff;border-radius:8px;overflow:hidden;">
-        <tr>
-            <td style="background:#111827;color:#fff;text-align:center;padding:16px;">
-                <h2 style="margin:0;font-size:20px;">Votre commande #{{ order.id }} a été annulée</h2>
-            </td>
-        </tr>
-        <tr>
-            <td style="padding:20px;">
-                <p>Bonjour,</p>
-                <p>Nous confirmons l'annulation de votre commande passée le {{ order.date }}.</p>
-                <table width="100%" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
-                    <thead>
-                        <tr style="background:#F3F4F6;">
-                            <th align="left">Produit</th>
-                            <th align="center">Qté</th>
-                            <th align="center">Variante</th>
-                            <th align="right">Montant</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for it in order["items"] %}
-                        <tr>
-                            <td>{{ it.name }}<br><small style="color:#6B7280;">{{ it.product_id }}</small></td>
-                            <td align="center">{{ it.qty }}</td>
-                            <td align="center">{{ it.color }} / {{ it.size }}</td>
-                            <td align="right">{{ "%.2f"|format(it.qty * it.unit_price) }} TND</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <td colspan="3" align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;">
-                                <strong>Total</strong></td>
-                            <td align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;"><strong>{{
-                                    "%.2f"|format(order.total_amount) }} TND</strong></td>
-                        </tr>
-                    </tfoot>
-                </table>
-                <p style="margin-top:12px;">Pour toute question, contactez-nous : {{ support_email }}</p>
-            </td>
-        </tr>
-        <tr>
-            <td style="background:#F3F4F6;padding:12px;text-align:center;color:#6B7280;font-size:12px;">
-                Savage Rise – Confirmation d'annulation
-            </td>
-        </tr>
-    </table>
-</body>
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#fff;border-radius:8px;overflow:hidden;">
+    <!-- En-tête -->
+    <tr>
+      <td style="background:#111827;color:#fff;text-align:center;padding:16px;">
+        {% if logo_url %}
+          <img src="{{ logo_url }}&tr=w-120" alt="Savage Rise" style="display:block;margin:0 auto 8px;width:120px;height:auto;">
+        {% endif %}
+        <h2 style="margin:0;font-size:20px;">Votre commande #{{ order.id }} a été annulée</h2>
+      </td>
+    </tr>
 
+    <!-- Intro -->
+    <tr>
+      <td style="padding:20px;">
+        <p style="margin:0 0 8px;color:#111827;">Bonjour,</p>
+        <p style="margin:0 0 16px;color:#4B5563;">
+          Nous confirmons l'annulation de votre commande passée le {{ order.date }}.
+        </p>
+
+        <!-- Détails des articles -->
+        <table width="100%" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+          <thead>
+            <tr style="background:#F3F4F6;">
+              <th align="left">Produit</th>
+              <th align="center">Qté</th>
+              <th align="center">Variante</th>
+              <th align="right">Montant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in order["items"] %}
+            <tr>
+              <td>
+                {{ it.name }}<br>
+                <small style="color:#6B7280;">{{ it.product_id }}</small>
+              </td>
+              <td align="center">{{ it.qty }}</td>
+              <td align="center">{{ it.color }} / {{ it.size }}</td>
+              <td align="right">{{ "%.2f"|format(it.qty * it.unit_price) }} TND</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            {% if order.subtotal is defined and order.subtotal is not none %}
+            <tr>
+              <td colspan="3" align="right" style="padding-top:8px;">
+                <strong>Sous-total</strong>
+              </td>
+              <td align="right" style="padding-top:8px;">
+                {{ "%.2f"|format(order.subtotal) }} TND
+              </td>
+            </tr>
+            {% if order.discount_value %}
+            <tr>
+              <td colspan="3" align="right">
+                <strong>Remise{% if order.promo_code %} ({{ order.promo_code }}){% endif %}</strong>
+              </td>
+              <td align="right">-{{ "%.2f"|format(order.discount_value) }} TND</td>
+            </tr>
+            {% endif %}
+            {% endif %}
+            <tr>
+              <td colspan="3" align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;">
+                <strong>Total</strong>
+              </td>
+              <td align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;">
+                <strong>{{ "%.2f"|format(order.total_amount) }} TND</strong>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <p style="margin-top:12px;color:#4B5563;">
+          Pour toute question, contactez-nous : <a href="mailto:{{ support_email }}" style="color:#111827;">{{ support_email }}</a>
+        </p>
+      </td>
+    </tr>
+
+    <!-- Pied de page -->
+    <tr>
+      <td style="background:#F3F4F6;padding:12px;text-align:center;color:#6B7280;font-size:12px;">
+        Savage Rise – Confirmation d'annulation
+      </td>
+    </tr>
+  </table>
+</body>
 </html>

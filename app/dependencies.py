@@ -55,3 +55,32 @@ async def get_current_user(
         )
 
     return user
+
+# ✅ Optionnel : pas d’erreur si pas de token → retourne None
+maybe_bearer = HTTPBearer(auto_error=False)
+
+async def get_current_user_optional(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(maybe_bearer),
+    db=Depends(get_db),
+):
+    if not creds:
+        return None  # anonyme
+
+    token = creds.credentials
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+    except JWTError:
+        return None
+
+    try:
+        oid = ObjectId(user_id)
+    except Exception:
+        return None
+
+    user = await get_user_by_id(db, oid)
+    if not user or not user.get("is_active", False):
+        return None
+    return user

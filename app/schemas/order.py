@@ -25,9 +25,12 @@ class OrderCreate(BaseModel):
     items: List[OrderItem]
     shipping: ShippingInfo
     payment_method: Literal["cod", "stripe", "paypal"] = "cod"
+    promo_code: Optional[str] = None              # << NEW
 
 class OrderOut(OrderCreate):
     id: str
+    subtotal: Optional[float] = None              # << NEW (avant remise)
+    discount_value: Optional[float] = None        # << NEW (montant de la remise)
     total_amount: float
     status: Literal["pending", "confirmed", "shipped", "delivered", "cancelled"]
     payment_status: Literal["unpaid", "paid", "refunded"]

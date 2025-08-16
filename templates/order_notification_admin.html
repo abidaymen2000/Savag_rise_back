@@ -19,8 +19,7 @@
       <td style="padding:12px 20px;border-bottom:1px solid #E5E7EB;">
         <p style="margin:0;color:#4B5563;">
           <strong>Date :</strong> {{ order.date }}<br>
-          <strong>Client :</strong> {{ order.user_email }}<br>
-          <strong>Email :</strong> {{ order.user_email }}
+          <strong>Client :</strong> {{ order.user_email }}
         </p>
       </td>
     </tr>
@@ -48,6 +47,24 @@
           {% endfor %}
           </tbody>
           <tfoot>
+            {% if order.subtotal is defined and order.subtotal is not none %}
+            <tr>
+              <td colspan="3" align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;">
+                <strong>Sous-total</strong>
+              </td>
+              <td align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;">
+                {{ "%.2f"|format(order.subtotal) }} TND
+              </td>
+            </tr>
+            {% if order.discount_value %}
+            <tr>
+              <td colspan="3" align="right">
+                <strong>Remise{% if order.promo_code %} ({{ order.promo_code }}){% endif %}</strong>
+              </td>
+              <td align="right">-{{ "%.2f"|format(order.discount_value) }} TND</td>
+            </tr>
+            {% endif %}
+            {% endif %}
             <tr>
               <td colspan="3" align="right" style="border-top:1px solid #E5E7EB;padding-top:8px;">
                 <strong>Total</strong>

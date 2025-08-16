@@ -10,10 +10,13 @@
     <!-- En-tête -->
     <tr>
       <td style="background:#111827;text-align:center;padding:20px;">
-        <img src="{{ logo_url }}&tr=w-120" alt="Savage Rise"
-             style="display:block;margin:0 auto;width:120px;height:auto;">
+        {% if logo_url %}
+          <img src="{{ logo_url }}&tr=w-120" alt="Savage Rise"
+               style="display:block;margin:0 auto;width:120px;height:auto;">
+        {% endif %}
       </td>
     </tr>
+
     <!-- Titre -->
     <tr>
       <td style="padding:30px 20px 10px;text-align:center;">
@@ -21,6 +24,7 @@
         <p style="margin:4px 0 0;color:#6B7280;">Commande #{{ order.id }} du {{ order.date }}</p>
       </td>
     </tr>
+
     <!-- Détail des articles -->
     <tr>
       <td style="padding:0 20px;">
@@ -47,14 +51,37 @@
           {% endfor %}
           </tbody>
           <tfoot>
+            {% if order.subtotal is defined and order.subtotal is not none %}
             <tr>
-              <td colspan="3" align="right" style="padding-top:12px;border-top:1px solid #E5E7EB;"><strong>Total</strong></td>
-              <td align="right" style="padding-top:12px;border-top:1px solid #E5E7EB;"><strong>{{ "%.2f"|format(order.total_amount) }} TND</strong></td>
+              <td colspan="3" align="right" style="padding-top:12px;border-top:1px solid #E5E7EB;">
+                <strong>Sous-total</strong>
+              </td>
+              <td align="right" style="padding-top:12px;border-top:1px solid #E5E7EB;">
+                {{ "%.2f"|format(order.subtotal) }} TND
+              </td>
+            </tr>
+            {% if order.discount_value %}
+            <tr>
+              <td colspan="3" align="right">
+                <strong>Remise{% if order.promo_code %} ({{ order.promo_code }}){% endif %}</strong>
+              </td>
+              <td align="right">-{{ "%.2f"|format(order.discount_value) }} TND</td>
+            </tr>
+            {% endif %}
+            {% endif %}
+            <tr>
+              <td colspan="3" align="right" style="padding-top:12px;border-top:1px solid #E5E7EB;">
+                <strong>Total</strong>
+              </td>
+              <td align="right" style="padding-top:12px;border-top:1px solid #E5E7EB;">
+                <strong>{{ "%.2f"|format(order.total_amount) }} TND</strong>
+              </td>
             </tr>
           </tfoot>
         </table>
       </td>
     </tr>
+
     <!-- Adresse de livraison -->
     <tr>
       <td style="padding:20px;">
@@ -68,11 +95,14 @@
         </p>
       </td>
     </tr>
+
     <!-- Footer -->
     <tr>
       <td style="background:#F3F4F6;padding:20px;text-align:center;color:#6B7280;font-size:12px;">
         <p style="margin:0;">© 2025 Savage Rise</p>
-        <p style="margin:4px 0 0;">Nous restons à votre écoute : <a href="mailto:{{ support_email }}" style="color:#6B7280;">{{ support_email }}</a></p>
+        <p style="margin:4px 0 0;">Nous restons à votre écoute :
+          <a href="mailto:{{ support_email }}" style="color:#6B7280;">{{ support_email }}</a>
+        </p>
       </td>
     </tr>
   </table>

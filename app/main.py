@@ -5,12 +5,13 @@ from pydantic import BaseModel
 from app.routers import contact
 from app.startup import init_mongo
 
-from .routers import profile, products, upload, variants, orders, auth, reviews, wishlist, categories
+from .routers import profile, products, upload, variants, orders, auth, reviews, wishlist, categories, promocodes
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Savage Rise E‑commerce API",  servers=[
-        {"url": "https://savage-rise-backend-d86a05fb19d4.herokuapp.com"}
-    ])
+app = FastAPI(title="Savage Rise E‑commerce API",  servers = [
+    {"url": "http://localhost:8000"},
+    {"url": "https://savage-rise-backend-d86a05fb19d4.herokuapp.com"},
+])
 
 app.add_middleware(
   CORSMiddleware,
@@ -50,3 +51,4 @@ app.include_router(reviews.router)
 app.include_router(wishlist.router)
 app.include_router(categories.router)
 app.include_router(contact.router)
+app.include_router(promocodes.router)

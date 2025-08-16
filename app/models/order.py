@@ -6,18 +6,30 @@ from datetime import datetime
 
 from .shipping import ShippingDB
 from .utils import PyObjectId
-from .variant import VariantDB  # ou OrderItem
 
 class OrderDB(BaseModel):
     id: PyObjectId
     user_id: Optional[str]
-    shipping: ShippingDB 
-    items: List[dict]            # chaque dict = OrderItem.dict()
-    shipping_address: str
-    payment_method: str
-    total_amount: float
-    status: str
-    payment_status: str
+
+    # Adresse/expédition
+    shipping: ShippingDB
+    shipping_address: Optional[str] = None  # (déprécié, gardé pour compat)
+
+    # Lignes de commande
+    items: List[dict]  # chaque dict = OrderItem.dict()
+
+    # Paiement
+    payment_method: str  # "cod" | "stripe" | "paypal"
+    payment_status: str  # "unpaid" | "paid" | "refunded"
+
+    # Remises / totaux
+    subtotal: Optional[float] = None       # << NEW (avant remise)
+    discount_value: Optional[float] = None # << NEW
+    promo_code: Optional[str] = None       # << NEW
+    total_amount: float                    # total payé (après remise)
+
+    # Statuts & dates
+    status: str  # "pending" | "confirmed" | "shipped" | "delivered" | "cancelled"
     created_at: datetime
     updated_at: datetime
 

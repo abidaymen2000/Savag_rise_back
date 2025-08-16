@@ -23,6 +23,7 @@ class ReviewOut(ReviewBase):
     product_id: str 
     created_at: datetime
     updated_at: datetime
+    author: Optional[str] = None  # <-- NEW: nom complet ou email
 
 class ReviewStats(BaseModel):
     average_rating: Optional[float]
