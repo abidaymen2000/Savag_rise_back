@@ -2,7 +2,7 @@ from typing import Literal
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.routers import contact
+from app.routers import admin_auth, admin_orders, contact
 from app.startup import init_mongo
 
 from .routers import profile, products, upload, variants, orders, auth, reviews, wishlist, categories, promocodes
@@ -52,3 +52,5 @@ app.include_router(wishlist.router)
 app.include_router(categories.router)
 app.include_router(contact.router)
 app.include_router(promocodes.router)
+app.include_router(admin_auth.router)
+app.include_router(admin_orders.router)

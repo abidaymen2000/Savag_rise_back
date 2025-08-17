@@ -66,3 +66,8 @@ async def init_mongo():
 
     # index unique sur le code
     await db["promocodes"].create_index("code", unique=True)        
+    
+    
+    if "admins" not in existing:
+        await db.create_collection("admins")
+        await db["admins"].create_index("email", unique=True)

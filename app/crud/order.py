@@ -1,5 +1,6 @@
 # app/crud/order.py
 from datetime import datetime
+from typing import Any, Dict, List, Tuple
 from bson import ObjectId
 from fastapi import HTTPException,status
 
@@ -107,3 +108,31 @@ def parse_oid(id_str: str) -> ObjectId:
         return ObjectId(id_str)
     except:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "ID de commande invalide")
+    
+    
+    # --- LISTING ADMIN ---
+def _normalize(doc: dict) -> dict:
+    if not doc:
+        return doc
+    doc["id"] = str(doc["_id"])
+    doc.pop("_id", None)
+    return doc
+
+async def list_orders(
+    db,
+    filters: Dict[str, Any],
+    skip: int,
+    limit: int,
+    sort: Tuple[str, int] = ("_id", -1),   # -1 = desc (les plus récentes d'abord)
+) -> List[Dict[str, Any]]:
+    cursor = (
+        db["orders"]
+        .find(filters)
+        .skip(skip)
+        .limit(limit)
+        .sort([sort])
+    )
+    return [_normalize(x) async for x in cursor]
+
+async def count_orders(db, filters: Dict[str, Any]) -> int:
+    return await db["orders"].count_documents(filters)
