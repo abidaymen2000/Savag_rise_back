@@ -1,65 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Optional, List, Tuple
+# app/routers/promocodes.py
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from typing import Optional, List, Tuple, Literal
 from datetime import datetime, timezone
 
 from app.schemas.promocode import (
     PromoCreate, PromoUpdate, PromoOut, ApplyRequest, ApplyResponse
 )
-from app.dependencies import get_db
+from app.db import get_db
 from app.crud import promocodes as crud
 from app.utils.discounts import validate_and_compute
 
-# ⬅️ NOUVEAU : dépendance "optionnelle" pour récupérer l'utilisateur si connecté,
-# sans lever d'erreur si anonyme (voir snippet à ajouter dans app/dependencies.py)
-from app.dependencies import get_current_user_optional     # type: ignore
+# 🔐 Auth
+from app.dependencies_admin import get_current_admin            # admin obligatoire pour CRUD
+from app.dependencies import get_current_user_optional          # user optionnel pour apply()
 
 router = APIRouter(prefix="/promocodes", tags=["Promo Codes"])
 
-
-# ---------- Admin: CRUD ----------
-@router.post("/", response_model=PromoOut)
-async def create_promo(data: PromoCreate, db=Depends(get_db)):
-    existing = await crud.get_by_code(db, data.code)
-    if existing:
-        raise HTTPException(409, "A promo with this code already exists.")
-    doc = await crud.create_promocode(db, data)
-    return PromoOut(**{**doc, "id": str(doc["_id"])})
-
-@router.get("/", response_model=List[PromoOut])
-async def list_promos(
-    db=Depends(get_db),
-    skip: int = 0,
-    limit: int = Query(50, le=200),
-    q: Optional[str] = None,
-):
-    items = await crud.list_promocodes(db, skip=skip, limit=limit, q=q)
-    return [PromoOut(**i) for i in items]
-
-@router.get("/{promo_id}", response_model=PromoOut)
-async def get_promo(promo_id: str, db=Depends(get_db)):
-    doc = await crud.get_by_id(db, promo_id)
-    if not doc:
-        raise HTTPException(404, "Promo not found")
-    return PromoOut(**doc)
-
-@router.patch("/{promo_id}", response_model=PromoOut)
-async def update_promo(promo_id: str, data: PromoUpdate, db=Depends(get_db)):
-    doc = await crud.update_promocode(db, promo_id, data)
-    if not doc:
-        raise HTTPException(404, "Promo not found")
-    return PromoOut(**doc)
-
-@router.delete("/{promo_id}")
-async def delete_promo(promo_id: str, db=Depends(get_db)):
-    ok = await crud.delete_promocode(db, promo_id)
-    if not ok:
-        raise HTTPException(404, "Promo not found")
-    return {"deleted": True}
-
-
-# ---------- Public: appliquer / valider ----------
+# ---------- Helpers ----------
 def to_aware_utc(dt: Optional[datetime]) -> Optional[datetime]:
-    """Force un datetime en UTC 'aware' (assume UTC si naïf)."""
     if dt is None:
         return None
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
@@ -95,11 +53,113 @@ def _usage_gates(promo: dict, user_id: Optional[str]) -> Tuple[bool, Optional[st
     return True, None
 
 
-@router.post("/apply", response_model=ApplyResponse)
+# ============================================================
+#                   ADMIN: CRUD + STATUS
+# ============================================================
+
+@router.post("/", response_model=PromoOut, summary="Créer un code promo (admin)")
+async def create_promo(
+    data: PromoCreate,
+    db = Depends(get_db),
+    _admin = Depends(get_current_admin),
+):
+    existing = await crud.get_by_code(db, data.code)
+    if existing:
+        raise HTTPException(409, "A promo with this code already exists.")
+    doc = await crud.create_promocode(db, data)
+    return PromoOut(**doc)
+
+@router.get("/", response_model=List[PromoOut], summary="Lister les codes promo (admin)")
+async def list_promos(
+    db = Depends(get_db),
+    _admin = Depends(get_current_admin),
+    skip: int = 0,
+    limit: int = Query(50, le=200),
+    q: Optional[str] = None,
+):
+    items = await crud.list_promocodes(db, skip=skip, limit=limit, q=q)
+    return [PromoOut(**i) for i in items]
+
+@router.get("/{promo_id}", response_model=PromoOut, summary="Lire un code promo (admin)")
+async def get_promo(
+    promo_id: str = Path(...),
+    db = Depends(get_db),
+    _admin = Depends(get_current_admin),
+):
+    doc = await crud.get_by_id(db, promo_id)
+    if not doc:
+        raise HTTPException(404, "Promo not found")
+    return PromoOut(**doc)
+
+@router.patch("/{promo_id}", response_model=PromoOut, summary="Mettre à jour un code promo (admin)")
+async def update_promo(
+    promo_id: str,
+    data: PromoUpdate,
+    db = Depends(get_db),
+    _admin = Depends(get_current_admin),
+):
+    doc = await crud.update_promocode(db, promo_id, data)
+    if not doc:
+        raise HTTPException(404, "Promo not found")
+    return PromoOut(**doc)
+
+@router.delete("/{promo_id}", summary="Supprimer un code promo (admin)")
+async def delete_promo(
+    promo_id: str,
+    db = Depends(get_db),
+    _admin = Depends(get_current_admin),
+):
+    ok = await crud.delete_promocode(db, promo_id)
+    if not ok:
+        raise HTTPException(404, "Promo not found")
+    return {"deleted": True}
+
+# --- Activer / Désactiver ---
+@router.patch("/{promo_id}/activate", summary="Activer un code promo (admin)")
+async def activate_promocode(
+    promo_id: str = Path(...),
+    db = Depends(get_db),
+    _admin = Depends(get_current_admin),
+):
+    promo = await crud.set_promocode_active(db, promo_id, True)
+    if not promo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Promo not found")
+    return {"message": "Code promo activé", "promo": PromoOut(**promo)}
+
+@router.patch("/{promo_id}/deactivate", summary="Désactiver un code promo (admin)")
+async def deactivate_promocode(
+    promo_id: str = Path(...),
+    db = Depends(get_db),
+    _admin = Depends(get_current_admin),
+):
+    promo = await crud.set_promocode_active(db, promo_id, False)
+    if not promo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Promo not found")
+    return {"message": "Code promo désactivé", "promo": PromoOut(**promo)}
+
+# (Option) endpoint unique:
+@router.patch("/{promo_id}/status", summary="Changer le statut actif/inactif (admin)")
+async def set_promocode_status(
+    promo_id: str = Path(...),
+    is_active: bool = Query(..., description="true=activer, false=désactiver"),
+    db = Depends(get_db),
+    _admin = Depends(get_current_admin),
+):
+    promo = await crud.set_promocode_active(db, promo_id, is_active)
+    if not promo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Promo not found")
+    return {"message": "Statut mis à jour", "promo": PromoOut(**promo)}
+
+
+# ============================================================
+#                        PUBLIC: APPLY
+# ============================================================
+
+@router.post("/apply", response_model=ApplyResponse, summary="Vérifier/appliquer un code promo (public)")
 async def apply_code(
     payload: ApplyRequest,
-    db=Depends(get_db),
-    current_user: Optional[dict] = Depends(get_current_user_optional),  # ✅ optionnel
+    db = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_current_user_optional),  # optionnel
 ):
     # 1) récupérer le code
     code = (payload.code or "").strip().upper()
@@ -107,9 +167,8 @@ async def apply_code(
     if not promo:
         return ApplyResponse(valid=False, reason="not_found")
 
-    # 2) identifiant *fiable* de l'utilisateur (si connecté)
+    # 2) identifiant fiable de l'utilisateur (si connecté)
     user_id: Optional[str] = str(current_user["_id"]) if current_user else None
-    # (on ignore payload.user_id pour éviter la triche côté client)
 
     # 3) limites d’usage AVANT calcul
     ok, why = _usage_gates(promo, user_id)

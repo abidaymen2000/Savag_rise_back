@@ -179,3 +179,17 @@ async def release_use(db, code: str, user_id: str):
         "$set": {"updated_at": now}
     }
     await db[COLL].update_one(query, update)
+
+async def set_promocode_active(db, promo_id: str, is_active: bool):
+    """
+    Active ou désactive un code promo en le mettant à jour.
+    """
+    now = datetime.now(timezone.utc)
+    res = await db[COLL].find_one_and_update(
+        {"_id": ObjectId(promo_id)},
+        {"$set": {"is_active": is_active, "updated_at": now}},
+        return_document=ReturnDocument.AFTER
+    )
+    if res:
+        res["id"] = str(res["_id"])
+    return res

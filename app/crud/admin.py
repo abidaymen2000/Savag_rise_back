@@ -2,8 +2,9 @@ from typing import Optional
 from datetime import datetime
 from app.db import client
 from app.models.admin import AdminInDB
+from app.config import settings
 
-COL = client.get_default_database()["admins"]
+COL = client[settings.MONGODB_DB_NAME]["admins"]
 
 def _norm_id(doc):
     if doc and "_id" in doc:
