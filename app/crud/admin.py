@@ -5,9 +5,15 @@ from app.models.admin import AdminInDB
 
 COL = client.get_default_database()["admins"]
 
+def _norm_id(doc):
+    if doc and "_id" in doc:
+        doc["_id"] = str(doc["_id"])
+    return doc
+
 async def get_by_email(email: str) -> Optional[AdminInDB]:
-    doc = await COL.find_one({"email": email})
-    return AdminInDB(**doc) if doc else None
+    data = await COL.find_one({"email": email})
+    data = _norm_id(data)
+    return AdminInDB(**data) if data else None
 
 async def create(admin: AdminInDB) -> AdminInDB:
     admin.updated_at = datetime.utcnow()
