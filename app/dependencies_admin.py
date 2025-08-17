@@ -1,13 +1,16 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt, JWTError
 from app.config import settings
 from app.crud.admin import get_by_email
 from app.models.admin import AdminInDB
 
-oauth2_admin = OAuth2PasswordBearer(tokenUrl="/admin/auth/token")
+bearer_admin = HTTPBearer(auto_error=True)
 
-async def get_current_admin(token: str = Depends(oauth2_admin)) -> AdminInDB:
+async def get_current_admin(
+    creds: HTTPAuthorizationCredentials = Security(bearer_admin),
+) -> AdminInDB:
+    token = creds.credentials
     cred_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid admin credentials",
