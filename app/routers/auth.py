@@ -101,14 +101,35 @@ async def login_token(
     form: OAuth2PasswordRequestForm = Depends(),
     db=Depends(get_db),
 ):
-    user = await verify_user(db, form.username, form.password)
-    if not user or not user.get("is_active", False):
+    # 1) Récupérer l'utilisateur par email
+    user = await get_user_by_email(db, form.username)
+    if not user:
+        # Ne révèle pas l'existence → message générique
         raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            detail="Email non vérifié ou identifiants invalides",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="INVALID_CREDENTIALS",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # 2) Email non vérifié
+    if not user.get("is_active", False):
+        # Code explicite pour que le front sache réagir
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,   # ou 403 si tu préfères
+            detail="EMAIL_NOT_VERIFIED",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 3) Vérifier le mot de passe (l'utilisateur est actif à ce stade)
+    verified = await verify_user(db, form.username, form.password)
+    if not verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="INVALID_CREDENTIALS",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 4) OK → token
     access_token = create_access_token(
         str(user["_id"]),
         timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
