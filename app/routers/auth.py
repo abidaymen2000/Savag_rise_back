@@ -1,5 +1,6 @@
 # app/routers/auth.py
 from datetime import datetime, timedelta
+from time import time
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -17,6 +18,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+
+# Cooldown simple (optionnel)
+RESEND_COOLDOWN_SECONDS = 120
+_last_resend: dict[str, float] = {}  # email -> last timestamp
 
 # Configurez Jinja2 pour charger les templates
 jinja_env = Environment(
@@ -180,3 +185,64 @@ async def reset_password(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Utilisateur introuvable")
 
     return {"message": "Votre mot de passe a bien été réinitialisé."}
+
+@router.post(
+    "/resend-verification",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Renvoyer l'email de vérification"
+)
+async def resend_verification(
+    payload: PasswordResetRequest,               # { "email": "..." }
+    background_tasks: BackgroundTasks,
+    db=Depends(get_db),
+):
+    email = payload.email.strip().lower()
+
+    # 1) Anti-spam minimal (optionnel)
+    now = time()
+    last = _last_resend.get(email, 0)
+    if now - last < RESEND_COOLDOWN_SECONDS:
+        # On renvoie 202 pour ne pas divulguer d'info sensible
+        return {"message": "Si ce compte existe, un email a déjà été envoyé récemment."}
+    _last_resend[email] = now
+
+    # 2) Récupère l'utilisateur si présent
+    user = await get_user_by_email(db, email)
+
+    # Pour ne pas divulguer si l'utilisateur existe, on garde des messages neutres
+    if not user:
+        return {"message": "Si ce compte existe, un email de vérification sera envoyé."}
+
+    # 3) Si déjà vérifié -> message neutre/utile
+    if user.get("is_active", False):
+        return {"message": "Ce compte est déjà vérifié."}
+
+    # 4) Génère un nouveau token (1h) + lien
+    token = create_access_token(str(user["_id"]), timedelta(hours=1))
+    verify_link = f"{settings.BACKEND_URL}/auth/verify-email?token={token}"
+
+    # 5) Email HTML + texte (réutilise ton template verify_email.html)
+    template = jinja_env.get_template("verify_email.html")
+    html_body = template.render(
+        user_email=email,
+        verification_link=verify_link,
+        logo_url=settings.LOGO_URL
+    )
+    text_body = (
+        f"Bonjour {email},\n\n"
+        "Voici un nouveau lien pour vérifier votre adresse email :\n\n"
+        f"{verify_link}\n\n"
+        "Ce lien expire dans 1 heure.\n\n"
+        "L'équipe Savage Rise"
+    )
+
+    # 6) Envoi en background
+    background_tasks.add_task(
+        send_email,
+        subject="Savage Rise – Renvoi : vérifiez votre email",
+        recipient=email,
+        body=text_body,
+        html=html_body
+    )
+
+    return {"message": "Si ce compte existe, un email de vérification a été envoyé."}
