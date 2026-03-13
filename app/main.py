@@ -21,10 +21,6 @@ from .routers import (
 
 app = FastAPI(
     title="Savage Rise E-commerce API",
-    servers=[
-        {"url": "http://localhost:8000"},
-        {"url": "https://savage-rise-backend-8f0f0a23c13f.herokuapp.com"},
-    ],
 )
 
 app.add_middleware(
