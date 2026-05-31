@@ -6,7 +6,8 @@ from bson import ObjectId
 from jinja2 import Environment, FileSystemLoader
 
 from app.crud.variant import decrement_variant_stock, increment_variant_stock
-from app.dependencies import get_current_user
+from app.crud.shipping_rate import resolve_shipping_rate
+from app.dependencies import get_current_user, get_current_user_optional
 from app.utils.email import send_email
 
 from ..db import get_db
@@ -26,11 +27,6 @@ jinja_env = Environment(
     autoescape=True
 )
 
-# === Frais de livraison (même logique que le front) ===
-SHIPPING_THRESHOLD = 300
-SHIPPING_COST = 7
-# ======================================================
-
 def parse_oid(id_str: str) -> ObjectId:
     try:
         return ObjectId(id_str)
@@ -43,9 +39,10 @@ async def api_create_order(
     order_in: OrderCreate,
     background_tasks: BackgroundTasks,
     db=Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(get_current_user_optional),
 ):
-    user_id = str(current_user["_id"])
+    user_id = str(current_user["_id"]) if current_user else None
+    customer_email = current_user["email"] if current_user else order_in.shipping.email
 
     # 1) Calcul des totaux côté serveur (hors livraison)
     subtotal = 0.0
@@ -59,6 +56,12 @@ async def api_create_order(
 
     # 2) Si code promo, on valide ET on réserve l'usage de façon atomique
     if getattr(order_in, "promo_code", None):
+        if not current_user:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Connectez-vous pour utiliser un code promo."
+            )
+
         promo = await promo_crud.get_by_code(db, order_in.promo_code)
         if not promo:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Code promo invalide")
@@ -86,9 +89,15 @@ async def api_create_order(
         total_amount = discounted_total
         promo_reserved = True
 
-    # 2bis) Livraison (calculée côté backend pour cohérence des emails / totals)
+    # 2bis) Livraison (calculée côté backend depuis les tarifs CMS)
     after_discount = total_amount
-    shipping_amount = 0 if after_discount >= SHIPPING_THRESHOLD else SHIPPING_COST
+    shipping_quote = await resolve_shipping_rate(
+        db,
+        country=order_in.shipping.country,
+        city=order_in.shipping.city,
+        order_total=after_discount,
+    )
+    shipping_amount = shipping_quote["shipping_amount"]
     total_amount = after_discount + shipping_amount
 
     # 3) Décrémenter le stock + créer la commande (avec rollback si erreur)
@@ -106,9 +115,13 @@ async def api_create_order(
 
         data = order_in.dict(exclude={"user_id"})
         data["user_id"] = user_id
+        data["user_email"] = customer_email
+        data["is_guest"] = current_user is None
         data["subtotal"] = subtotal
         data["discount_value"] = discount_value
         data["promo_code"] = applied_code
+        data["shipping_rate_id"] = shipping_quote["shipping_rate_id"]
+        data["shipping_rate_name"] = shipping_quote["shipping_rate_name"]
         data["shipping_amount"] = shipping_amount
         data["total_amount"] = total_amount
         if promo_reserved:
@@ -136,7 +149,7 @@ async def api_create_order(
     order_data = {
         "id": new_order["id"],
         "date": datetime.utcnow().strftime("%d/%m/%Y %H:%M"),
-        "user_email": current_user["email"],
+        "user_email": customer_email,
         "items": [
             {
                 "product_id": it["product_id"],
@@ -155,6 +168,7 @@ async def api_create_order(
         "total_amount": new_order["total_amount"],
         "shipping": new_order["shipping"],
         "shipping_amount": new_order.get("shipping_amount", 0),
+        "shipping_rate_name": new_order.get("shipping_rate_name"),
         "subtotal": new_order.get("subtotal"),
         "discount_value": new_order.get("discount_value"),
         "promo_code": new_order.get("promo_code"),
@@ -197,7 +211,7 @@ async def api_create_order(
     background_tasks.add_task(
         send_email,
         subject=f"Votre commande #{order_data['id']} – Savage Rise",
-        recipient=current_user["email"],
+        recipient=customer_email,
         body=text_client,
         html=html_client
     )

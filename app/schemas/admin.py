@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 
 class AdminLogin(BaseModel):
@@ -15,3 +15,7 @@ class AdminPublic(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+class AdminPasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8)

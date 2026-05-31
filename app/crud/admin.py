@@ -21,3 +21,10 @@ async def create(admin: AdminInDB) -> AdminInDB:
     res = await COL.insert_one(admin.model_dump(by_alias=True))
     admin.id = str(res.inserted_id)
     return admin
+
+async def update_password_hash(email: str, password_hash: str) -> bool:
+    res = await COL.update_one(
+        {"email": email},
+        {"$set": {"password_hash": password_hash, "updated_at": datetime.utcnow()}}
+    )
+    return res.modified_count == 1

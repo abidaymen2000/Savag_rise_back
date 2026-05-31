@@ -33,6 +33,7 @@ async def init_mongo():
     # 2) Index “facettes” pour accélérer les filtres
     #    – prix
     await db["products"].create_index("price", background=True)
+    await db["products"].create_index("gender", background=True)
     #    – variants.color et variants.size (tableau “variants”)
     await db["products"].create_index("variants.color", background=True)
     await db["products"].create_index("variants.size",  background=True)
@@ -66,6 +67,26 @@ async def init_mongo():
 
     # index unique sur le code
     await db["promocodes"].create_index("code", unique=True)        
+
+    if "shipping_rates" not in existing:
+        await db.create_collection("shipping_rates")
+
+    await db["shipping_rates"].create_index("is_active", background=True)
+    await db["shipping_rates"].create_index([("country", 1), ("city", 1)], background=True)
+
+    if await db["shipping_rates"].count_documents({}) == 0:
+        from datetime import datetime
+        now = datetime.utcnow()
+        await db["shipping_rates"].insert_one({
+            "name": "Livraison standard",
+            "country": "Tunisia",
+            "city": None,
+            "price": 7,
+            "free_shipping_threshold": 300,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        })
     
     
     if "admins" not in existing:

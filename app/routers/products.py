@@ -5,7 +5,7 @@ from fastapi import (
     APIRouter, Depends, HTTPException, Query,
     status, Response
 )
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pymongo import ASCENDING, DESCENDING
 
@@ -65,6 +65,7 @@ async def search_products_endpoint(
     text: Optional[str] = Query(None, description="Terme plein-texte"),
     min_price: Optional[float] = Query(None, ge=0),
     max_price: Optional[float] = Query(None, ge=0),
+    gender: Optional[Literal["men", "women", "unisex"]] = Query(None),
     color: Optional[str] = Query(None),
     size: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
@@ -87,6 +88,8 @@ async def search_products_endpoint(
         if max_price is not None:
             pf["$lte"] = max_price
         filt["price"] = pf
+    if gender:
+        filt["gender"] = gender
     if color or size:
         em: dict = {}
         if color:

@@ -16,6 +16,8 @@ async def create_order(db, order_data: dict):
 
     # 1) Champs requis
     user_id = order_data.get("user_id")
+    user_email = order_data.get("user_email")
+    is_guest = order_data.get("is_guest", user_id is None)
     shipping = order_data["shipping"]
     items = order_data["items"]
     payment_method = order_data.get("payment_method", "cod")
@@ -34,10 +36,15 @@ async def create_order(db, order_data: dict):
 
     # 4) Code promo (optionnel)
     promo_code = order_data.get("promo_code")
+    shipping_amount = order_data.get("shipping_amount", 0)
+    shipping_rate_id = order_data.get("shipping_rate_id")
+    shipping_rate_name = order_data.get("shipping_rate_name")
 
     # 5) Construction du document
     order_doc = {
         "user_id": user_id,
+        "user_email": user_email,
+        "is_guest": is_guest,
         "shipping": shipping,
         "items": items,
         "payment_method": payment_method,
@@ -46,6 +53,9 @@ async def create_order(db, order_data: dict):
         "subtotal": float(subtotal),
         "discount_value": float(discount_value),
         "promo_code": promo_code,
+        "shipping_amount": float(shipping_amount),
+        "shipping_rate_id": shipping_rate_id,
+        "shipping_rate_name": shipping_rate_name,
         "total_amount": float(total_amount),
 
         # Statuts

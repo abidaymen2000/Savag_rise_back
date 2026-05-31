@@ -39,6 +39,7 @@ async def search_products(
     text: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
+    gender: Optional[str] = None,
     style: Optional[str] = None,
     season: Optional[str] = None,
     target_audience: Optional[str] = None,
@@ -65,7 +66,7 @@ async def search_products(
         query["price"] = price_f
 
     # Facettes standard
-    for field, val in (("style", style), ("season", season), ("target_audience", target_audience)):
+    for field, val in (("gender", gender), ("style", style), ("season", season), ("target_audience", target_audience)):
         if val:
             query[field] = val
 

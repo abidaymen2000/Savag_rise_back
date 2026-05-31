@@ -29,8 +29,13 @@ class OrderCreate(BaseModel):
 
 class OrderOut(OrderCreate):
     id: str
+    user_email: Optional[EmailStr] = None
+    is_guest: bool = False
     subtotal: Optional[float] = None              # << NEW (avant remise)
     discount_value: Optional[float] = None        # << NEW (montant de la remise)
+    shipping_amount: Optional[float] = None
+    shipping_rate_id: Optional[str] = None
+    shipping_rate_name: Optional[str] = None
     total_amount: float
     status: Literal["pending", "confirmed", "shipped", "delivered", "cancelled"]
     payment_status: Literal["unpaid", "paid", "refunded"]

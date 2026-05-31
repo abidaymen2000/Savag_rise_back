@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
-from app.schemas.admin import AdminLogin, Token
-from app.crud.admin import get_by_email
-from app.utils.security_admin import verify_password, create_admin_jwt
+from fastapi import APIRouter, Depends, HTTPException, status
+from app.dependencies_admin import get_current_admin
+from app.schemas.admin import AdminLogin, AdminPasswordChange, Token
+from app.crud.admin import get_by_email, update_password_hash
+from app.utils.security_admin import create_admin_jwt, hash_password, verify_password
 
 router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
 
@@ -11,3 +12,32 @@ async def admin_login(form: AdminLogin):
     if not admin or not verify_password(form.password, admin.password_hash):
         raise HTTPException(status_code=401, detail="Bad admin credentials")
     return Token(access_token=create_admin_jwt(admin.email))
+
+@router.patch("/change-password", summary="Modifier le mot de passe de l'admin connectÃ©")
+async def change_admin_password(
+    payload: AdminPasswordChange,
+    current_admin=Depends(get_current_admin),
+):
+    if not verify_password(payload.current_password, current_admin.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mot de passe actuel incorrect"
+        )
+
+    if verify_password(payload.new_password, current_admin.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le nouveau mot de passe doit Ãªtre diffÃ©rent de l'ancien"
+        )
+
+    updated = await update_password_hash(
+        current_admin.email,
+        hash_password(payload.new_password)
+    )
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ã‰chec de mise Ã  jour du mot de passe"
+        )
+
+    return {"message": "Mot de passe admin mis Ã  jour"}
