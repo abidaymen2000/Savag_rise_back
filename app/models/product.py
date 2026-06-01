@@ -1,10 +1,8 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Literal
+from typing import Optional, List, Dict
 
 from app.schemas.variant import VariantCreate
 from .utils import PyObjectId
-
-ProductGender = Literal["men", "women", "unisex"]
 
 class ProductModel(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
@@ -16,7 +14,7 @@ class ProductModel(BaseModel):
     sku: Optional[str] = None
 
     # Positionnement
-    gender: Optional[ProductGender] = None
+    gender: Optional[str] = None
     style: str
     season: str
     target_audience: str

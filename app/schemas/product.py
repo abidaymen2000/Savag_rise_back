@@ -1,11 +1,9 @@
 #app/schemas/product.py
 from pydantic import BaseModel, Field, HttpUrl
-from typing import List, Optional, Dict, Literal
+from typing import List, Optional, Dict
 
 from .variant import VariantCreate, VariantOut
 from .image import ImageCreate
-
-ProductGender = Literal["men", "women", "unisex"]
 
 class ProductBase(BaseModel):
     # Identification
@@ -19,7 +17,7 @@ class ProductBase(BaseModel):
     packaging: Optional[str] = None
 
     # Positionnement
-    gender: Optional[ProductGender] = Field(None, description="Genre cible: men, women ou unisex")
+    gender: Optional[str] = Field(None, description="Genre cible")
     style: Optional[str] = None
     season: Optional[str] = None
     target_audience: Optional[str] = None
@@ -76,7 +74,7 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     packaging: Optional[str] = None
 
-    gender: Optional[ProductGender] = None
+    gender: Optional[str] = None
     style: Optional[str] = None
     season: Optional[str] = None
     target_audience: Optional[str] = None
@@ -108,4 +106,4 @@ class ProductUpdate(BaseModel):
     price: Optional[float] = None
     in_stock: Optional[bool] = None
 
-    categories: Optional[List[str]]
+    categories: Optional[List[str]] = None

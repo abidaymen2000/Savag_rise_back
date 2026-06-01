@@ -5,7 +5,7 @@ from fastapi import (
     APIRouter, Depends, HTTPException, Query,
     status, Response
 )
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 from pymongo import ASCENDING, DESCENDING
 
@@ -18,12 +18,33 @@ from ..schemas.product import ProductCreate, ProductUpdate, ProductOut
 router = APIRouter(prefix="/products", tags=["products"])
 
 
+def product_to_out(product: Dict[str, Any]) -> ProductOut:
+    payload: Dict[str, Any] = {k: v for k, v in product.items() if k != "_id"}
+    payload["id"] = str(product["_id"])
+
+    remapped_variants = []
+    for variant in payload.get("variants", []):
+        remapped_images = []
+        for image in variant.get("images", []):
+            if isinstance(image, dict):
+                image_id = image.get("_id", image.get("id"))
+                remapped_images.append({
+                    "id": str(image_id),
+                    **{k: v for k, v in image.items() if k not in ("_id", "id")}
+                })
+            else:
+                remapped_images.append({"id": str(image), "url": image})
+        variant["images"] = remapped_images
+        remapped_variants.append(variant)
+    payload["variants"] = remapped_variants
+
+    return ProductOut(**payload)
+
+
 @router.post("/", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
 async def create_product(product: ProductCreate, db=Depends(get_db)):
     created = await crud.create_product(db, product)
-    return ProductOut(id=str(created["_id"]), **{
-        k: v for k, v in created.items() if k != "_id"
-    })
+    return product_to_out(created)
 
 
 @router.get("/", response_model=List[ProductOut])
@@ -65,7 +86,7 @@ async def search_products_endpoint(
     text: Optional[str] = Query(None, description="Terme plein-texte"),
     min_price: Optional[float] = Query(None, ge=0),
     max_price: Optional[float] = Query(None, ge=0),
-    gender: Optional[Literal["men", "women", "unisex"]] = Query(None),
+    gender: Optional[str] = Query(None),
     color: Optional[str] = Query(None),
     size: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
@@ -108,8 +129,7 @@ async def search_products_endpoint(
     raw = await db["products"].aggregate(pipeline).to_list(length=limit)
     results = []
     for doc in raw:
-        doc["id"] = str(doc["_id"])
-        results.append(doc)
+        results.append(product_to_out(doc))
     return results
 
 
@@ -139,9 +159,7 @@ async def update_product_endpoint(
             "Échec lors de la mise à jour"
         )
 
-    return ProductOut(id=str(updated["_id"]), **{
-        k: v for k, v in updated.items() if k != "_id"
-    })
+    return product_to_out(updated)
 
 
 @router.delete(
