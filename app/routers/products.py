@@ -24,18 +24,22 @@ def product_to_out(product: Dict[str, Any]) -> ProductOut:
 
     remapped_variants = []
     for variant in payload.get("variants", []):
+        variant_payload = dict(variant)
         remapped_images = []
-        for image in variant.get("images", []):
+        for image in variant_payload.get("images", []):
             if isinstance(image, dict):
+                image_url = image.get("url")
+                if not image_url:
+                    continue
                 image_id = image.get("_id", image.get("id"))
                 remapped_images.append({
-                    "id": str(image_id),
+                    "id": str(image_id or image_url),
                     **{k: v for k, v in image.items() if k not in ("_id", "id")}
                 })
-            else:
+            elif image:
                 remapped_images.append({"id": str(image), "url": image})
-        variant["images"] = remapped_images
-        remapped_variants.append(variant)
+        variant_payload["images"] = remapped_images
+        remapped_variants.append(variant_payload)
     payload["variants"] = remapped_variants
 
     return ProductOut(**payload)
