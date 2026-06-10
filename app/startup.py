@@ -95,3 +95,15 @@ async def init_mongo():
 
     if "cms_settings" not in existing:
         await db.create_collection("cms_settings")
+
+    if "vlog_chapters" not in existing:
+        await db.create_collection("vlog_chapters")
+
+    await db["vlog_chapters"].create_index("slug", unique=True, background=True)
+    await db["vlog_chapters"].create_index([("status", 1), ("order", 1)], background=True)
+
+    if "vlog_episodes" not in existing:
+        await db.create_collection("vlog_episodes")
+
+    await db["vlog_episodes"].create_index([("chapter_id", 1), ("order", 1)], background=True)
+    await db["vlog_episodes"].create_index([("status", 1), ("release_date", 1)], background=True)
