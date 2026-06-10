@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from app.routers import admin_auth, admin_orders, admin_shipping_rates, admin_users, contact, shipping_rates
 from app.startup import init_mongo
 
-from .routers import profile, products, upload, variants, orders, auth, reviews, wishlist, categories, promocodes
+from .routers import profile, products, upload, variants, orders, auth, reviews, wishlist, categories, promocodes, header_video
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Savage Rise E‑commerce API",  servers = [
@@ -53,6 +53,7 @@ app.include_router(categories.router)
 app.include_router(contact.router)
 app.include_router(shipping_rates.router)
 app.include_router(promocodes.router)
+app.include_router(header_video.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_orders.router)
 app.include_router(admin_shipping_rates.router)

@@ -92,3 +92,6 @@ async def init_mongo():
     if "admins" not in existing:
         await db.create_collection("admins")
         await db["admins"].create_index("email", unique=True)
+
+    if "cms_settings" not in existing:
+        await db.create_collection("cms_settings")
