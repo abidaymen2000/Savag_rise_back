@@ -107,3 +107,9 @@ async def init_mongo():
 
     await db["vlog_episodes"].create_index([("chapter_id", 1), ("order", 1)], background=True)
     await db["vlog_episodes"].create_index([("status", 1), ("release_date", 1)], background=True)
+
+    if "vlog_media" not in existing:
+        await db.create_collection("vlog_media")
+
+    await db["vlog_media"].create_index("file_id", background=True)
+    await db["vlog_media"].create_index([("media_type", 1), ("_id", -1)], background=True)

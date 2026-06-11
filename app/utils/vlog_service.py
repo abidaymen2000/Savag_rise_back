@@ -17,6 +17,7 @@ SETTINGS_COLLECTION = "cms_settings"
 VLOG_SETTINGS_KEY = "vlog_page"
 CHAPTERS_COLLECTION = "vlog_chapters"
 EPISODES_COLLECTION = "vlog_episodes"
+MEDIA_COLLECTION = "vlog_media"
 PUBLIC_CHAPTER_STATUSES = ["coming_soon", "active", "completed"]
 PUBLIC_EPISODE_STATUSES = ["coming_soon", "released"]
 

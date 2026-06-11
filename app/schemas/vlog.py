@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 ChapterStatus = Literal["draft", "coming_soon", "active", "completed", "archived"]
@@ -20,12 +20,32 @@ class VlogMediaAsset(BaseModel):
 
 
 class ImageKitDirectUploadAuth(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     token: str
     expire: int
     signature: str
-    public_key: str
-    url_endpoint: str
+    public_key: str = Field(..., alias="publicKey")
+    url_endpoint: str = Field(..., alias="urlEndpoint")
     folder: str
+
+
+class VlogMediaRegister(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    media_type: MediaType
+    file_id: Optional[str] = Field(None, alias="fileId")
+    name: Optional[str] = None
+    url: str
+    thumbnail_url: Optional[str] = Field(None, alias="thumbnailUrl")
+    file_path: Optional[str] = Field(None, alias="filePath")
+    mime: Optional[str] = None
+    size: Optional[int] = None
+
+
+class VlogMediaOut(VlogMediaRegister):
+    id: str
+    created_at: datetime
 
 
 class VlogSettingsBase(BaseModel):

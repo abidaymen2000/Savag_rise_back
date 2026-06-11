@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 
@@ -16,6 +16,8 @@ from app.schemas.vlog import (
     VlogEpisodeOut,
     VlogEpisodeUpdate,
     VlogMediaAsset,
+    VlogMediaOut,
+    VlogMediaRegister,
     VlogSettingsOut,
     VlogSettingsUpdate,
 )
@@ -26,6 +28,7 @@ from app.utils.imagekit_media import VLOG_MEDIA_FOLDERS
 from app.utils.vlog_service import (
     CHAPTERS_COLLECTION,
     EPISODES_COLLECTION,
+    MEDIA_COLLECTION,
     SETTINGS_COLLECTION,
     VLOG_SETTINGS_KEY,
     chapter_out,
@@ -85,6 +88,40 @@ async def admin_get_vlog_media_upload_auth(
         url_endpoint=str(settings.imagekit_url_endpoint),
         folder=VLOG_MEDIA_FOLDERS[media_type],
     )
+
+
+def _media_out(doc) -> VlogMediaOut:
+    payload = {k: v for k, v in doc.items() if k != "_id"}
+    payload["id"] = str(doc["_id"])
+    return VlogMediaOut(**payload)
+
+
+@router.post("/media/register", response_model=VlogMediaOut, status_code=201)
+async def admin_register_uploaded_vlog_media(
+    payload: VlogMediaRegister,
+    _admin=Depends(get_current_admin),
+    db=Depends(get_db),
+):
+    data = payload.model_dump(by_alias=False)
+    data["created_at"] = now_utc()
+    res = await db[MEDIA_COLLECTION].insert_one(data)
+    created = await db[MEDIA_COLLECTION].find_one({"_id": res.inserted_id})
+    return _media_out(created)
+
+
+@router.get("/media", response_model=List[VlogMediaOut])
+async def admin_list_vlog_media(
+    media_type: Optional[MediaType] = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    skip: int = Query(0, ge=0),
+    _admin=Depends(get_current_admin),
+    db=Depends(get_db),
+):
+    filters = {}
+    if media_type:
+        filters["media_type"] = media_type
+    docs = await db[MEDIA_COLLECTION].find(filters).sort("_id", -1).skip(skip).limit(limit).to_list(length=limit)
+    return [_media_out(doc) for doc in docs]
 
 
 @router.get("/chapters", response_model=List[VlogChapterWithEpisodesOut])
