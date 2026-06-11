@@ -19,6 +19,15 @@ class VlogMediaAsset(BaseModel):
     size: Optional[int] = None
 
 
+class ImageKitDirectUploadAuth(BaseModel):
+    token: str
+    expire: int
+    signature: str
+    public_key: str
+    url_endpoint: str
+    folder: str
+
+
 class VlogSettingsBase(BaseModel):
     title: str = "Savage Rise Chapters"
     subtitle: Optional[str] = "Every 3 drops tell one story"

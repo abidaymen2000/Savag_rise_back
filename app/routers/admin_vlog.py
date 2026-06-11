@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, Up
 from app.db import get_db
 from app.dependencies_admin import get_current_admin
 from app.schemas.vlog import (
+    ImageKitDirectUploadAuth,
     MediaType,
     ShortFilmUpdate,
     VlogChapterCreate,
@@ -18,7 +19,10 @@ from app.schemas.vlog import (
     VlogSettingsOut,
     VlogSettingsUpdate,
 )
+from app.config import settings
+from app.utils.imagekit_client import ik
 from app.utils.imagekit_media import upload_vlog_media_to_imagekit
+from app.utils.imagekit_media import VLOG_MEDIA_FOLDERS
 from app.utils.vlog_service import (
     CHAPTERS_COLLECTION,
     EPISODES_COLLECTION,
@@ -65,6 +69,22 @@ async def admin_upload_vlog_media(
 ):
     asset = await upload_vlog_media_to_imagekit(file, media_type)
     return VlogMediaAsset(**asset)
+
+
+@router.get("/media/upload-auth", response_model=ImageKitDirectUploadAuth)
+async def admin_get_vlog_media_upload_auth(
+    media_type: MediaType = Query(...),
+    _admin=Depends(get_current_admin),
+):
+    auth = ik.get_authentication_parameters()
+    return ImageKitDirectUploadAuth(
+        token=auth["token"],
+        expire=auth["expire"],
+        signature=auth["signature"],
+        public_key=settings.imagekit_public_key.get_secret_value(),
+        url_endpoint=str(settings.imagekit_url_endpoint),
+        folder=VLOG_MEDIA_FOLDERS[media_type],
+    )
 
 
 @router.get("/chapters", response_model=List[VlogChapterWithEpisodesOut])
