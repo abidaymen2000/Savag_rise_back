@@ -26,6 +26,7 @@ class OrderCreate(BaseModel):
     shipping: ShippingInfo
     payment_method: Literal["cod", "stripe", "paypal"] = "cod"
     promo_code: Optional[str] = None              # << NEW
+    loyalty_points_to_use: int = Field(0, ge=0)
 
 class OrderOut(OrderCreate):
     id: str
@@ -33,6 +34,10 @@ class OrderOut(OrderCreate):
     is_guest: bool = False
     subtotal: Optional[float] = None              # << NEW (avant remise)
     discount_value: Optional[float] = None        # << NEW (montant de la remise)
+    loyalty_points_used: int = 0
+    loyalty_discount_value: float = 0
+    loyalty_points_earned: int = 0
+    loyalty_points_awarded: bool = False
     shipping_amount: Optional[float] = None
     shipping_rate_id: Optional[str] = None
     shipping_rate_name: Optional[str] = None

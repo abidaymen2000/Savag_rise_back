@@ -18,6 +18,14 @@ from ..config import settings
 # === Promo ===
 from app.crud import promocodes as promo_crud
 from app.utils.discounts import validate_and_compute
+from app.utils.loyalty_service import (
+    award_points_for_paid_order,
+    calculate_redeem,
+    get_points_balance,
+    loyalty_settings_out,
+    redeem_points_for_order,
+    refund_redeemed_points,
+)
 # =============
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -53,6 +61,8 @@ async def api_create_order(
     discount_value = 0.0
     applied_code = None
     promo_reserved = False
+    loyalty_points_used = 0
+    loyalty_discount_value = 0.0
 
     # 2) Si code promo, on valide ET on réserve l'usage de façon atomique
     if getattr(order_in, "promo_code", None):
@@ -91,17 +101,37 @@ async def api_create_order(
 
     # 2bis) Livraison (calculée côté backend depuis les tarifs CMS)
     after_discount = total_amount
+    requested_loyalty_points = int(getattr(order_in, "loyalty_points_to_use", 0) or 0)
+    if requested_loyalty_points > 0:
+        if not current_user:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Connectez-vous pour utiliser vos points SR."
+            )
+        loyalty_settings = await loyalty_settings_out(db)
+        loyalty_balance = await get_points_balance(db, user_id)
+        loyalty_points_used, loyalty_discount_value = calculate_redeem(
+            requested_loyalty_points,
+            loyalty_balance,
+            after_discount,
+            loyalty_settings,
+        )
+        total_amount = max(0.0, round(after_discount - loyalty_discount_value, 2))
+
+    after_loyalty = total_amount
     shipping_quote = await resolve_shipping_rate(
         db,
         country=order_in.shipping.country,
         city=order_in.shipping.city,
-        order_total=after_discount,
+        order_total=after_loyalty,
     )
     shipping_amount = shipping_quote["shipping_amount"]
-    total_amount = after_discount + shipping_amount
+    total_amount = after_loyalty + shipping_amount
 
     # 3) Décrémenter le stock + créer la commande (avec rollback si erreur)
     decremented: List[Tuple[str, str, str, int]] = []
+    new_order = None
+    loyalty_redeemed = False
     try:
         for it in order_in.items:
             await decrement_variant_stock(
@@ -120,6 +150,9 @@ async def api_create_order(
         data["subtotal"] = subtotal
         data["discount_value"] = discount_value
         data["promo_code"] = applied_code
+        data["loyalty_points_used"] = loyalty_points_used
+        data["loyalty_discount_value"] = loyalty_discount_value
+        data["loyalty_eligible_amount"] = after_loyalty
         data["shipping_rate_id"] = shipping_quote["shipping_rate_id"]
         data["shipping_rate_name"] = shipping_quote["shipping_rate_name"]
         data["shipping_amount"] = shipping_amount
@@ -129,8 +162,27 @@ async def api_create_order(
             data["promo_reserved"] = True
 
         new_order = await crud_create_order(db, data)
+        if loyalty_points_used > 0:
+            await redeem_points_for_order(
+                db,
+                user_id=user_id,
+                order_id=new_order["id"],
+                points=loyalty_points_used,
+                discount_value=loyalty_discount_value,
+            )
+            loyalty_redeemed = True
 
     except Exception:
+        if loyalty_redeemed and new_order:
+            try:
+                await refund_redeemed_points(db, new_order, reason="Rollback commande")
+            except Exception:
+                pass
+        if new_order:
+            try:
+                await db["orders"].delete_one({"_id": ObjectId(new_order["id"])})
+            except Exception:
+                pass
         # ↩️ rollback stock
         for pid, color, size, qty in reversed(decremented):
             try:
@@ -297,8 +349,9 @@ async def api_mark_paid(
 ):
     oid = parse_oid(order_id)
     await mark_paid(db, oid)
+    earned_points = await award_points_for_paid_order(db, oid)
     # IMPORTANT: NE PLUS incrémenter ici — l'usage a déjà été "réservé" à la création
-    return {"message": "Paiement enregistré"}
+    return {"message": "Paiement enregistre", "loyalty_points_earned": earned_points}
 
 
 @router.patch(
@@ -339,6 +392,8 @@ async def api_cancel_order(
         except Exception:
             # on n'empêche pas l'annulation si la libération échoue
             pass
+
+    await refund_redeemed_points(db, ord_doc, reason="Annulation commande")
 
     # 3) PASSAGE EN STATUS 'cancelled'
     await update_order_status(db, oid, "cancelled")

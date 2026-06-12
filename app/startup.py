@@ -17,6 +17,7 @@ async def init_mongo():
         await db.create_collection("users")
     # email unique
     await db["users"].create_index("email", unique=True, background=True)
+    await db["users"].create_index("loyalty_points_balance", background=True)
 
     # --- PRODUCTS ---
     if "products" not in existing:
@@ -43,6 +44,8 @@ async def init_mongo():
         await db.create_collection("orders")
         # index sur user_id pour retrouver rapidement les commandes d’un user
     # etc.
+    await db["orders"].create_index("user_id", background=True)
+    await db["orders"].create_index("loyalty_points_awarded", background=True)
 
     if "reviews" not in existing:
         await db.create_collection("reviews")
@@ -97,6 +100,13 @@ async def init_mongo():
 
     if "cms_settings" not in existing:
         await db.create_collection("cms_settings")
+
+    if "loyalty_transactions" not in existing:
+        await db.create_collection("loyalty_transactions")
+
+    await db["loyalty_transactions"].create_index([("user_id", 1), ("created_at", -1)], background=True)
+    await db["loyalty_transactions"].create_index("order_id", background=True)
+    await db["loyalty_transactions"].create_index([("type", 1), ("created_at", -1)], background=True)
 
     if "vlog_chapters" not in existing:
         await db.create_collection("vlog_chapters")

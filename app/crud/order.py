@@ -39,6 +39,10 @@ async def create_order(db, order_data: dict):
     shipping_amount = order_data.get("shipping_amount", 0)
     shipping_rate_id = order_data.get("shipping_rate_id")
     shipping_rate_name = order_data.get("shipping_rate_name")
+    loyalty_points_to_use = int(order_data.get("loyalty_points_to_use", 0) or 0)
+    loyalty_points_used = int(order_data.get("loyalty_points_used", 0) or 0)
+    loyalty_discount_value = float(order_data.get("loyalty_discount_value", 0) or 0)
+    loyalty_eligible_amount = float(order_data.get("loyalty_eligible_amount", subtotal) or 0)
 
     # 5) Construction du document
     order_doc = {
@@ -53,6 +57,13 @@ async def create_order(db, order_data: dict):
         "subtotal": float(subtotal),
         "discount_value": float(discount_value),
         "promo_code": promo_code,
+        "loyalty_points_to_use": loyalty_points_to_use,
+        "loyalty_points_used": loyalty_points_used,
+        "loyalty_discount_value": loyalty_discount_value,
+        "loyalty_eligible_amount": loyalty_eligible_amount,
+        "loyalty_points_earned": 0,
+        "loyalty_points_awarded": False,
+        "loyalty_points_refunded": False,
         "shipping_amount": float(shipping_amount),
         "shipping_rate_id": shipping_rate_id,
         "shipping_rate_name": shipping_rate_name,
