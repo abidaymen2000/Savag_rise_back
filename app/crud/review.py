@@ -7,6 +7,7 @@ async def create_review(db: AsyncIOMotorDatabase, product_id: str, data: dict):
     doc = {
         **data,
         "product_id": product_id,
+        "status": "visible",
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
@@ -34,7 +35,7 @@ async def delete_review(db, product_id: str, review_id: str):
     })
 
 async def list_reviews(db, product_id: str, rating: int = None, skip: int = 0, limit: int = 10, sort_best: bool = False):
-    filt = {"product_id": product_id}
+    filt = {"product_id": product_id, "status": {"$ne": "hidden"}}
     if rating:
         filt["rating"] = rating
     cursor = db["reviews"].find(filt)
@@ -46,7 +47,7 @@ async def list_reviews(db, product_id: str, rating: int = None, skip: int = 0, l
 
 async def get_review_stats(db, product_id: str):
     pipeline = [
-        {"$match": {"product_id": product_id}},
+        {"$match": {"product_id": product_id, "status": {"$ne": "hidden"}}},
         {"$group": {
             "_id": "$product_id",
             "average_rating": {"$avg": "$rating"},

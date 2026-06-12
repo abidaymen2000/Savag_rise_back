@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 ChapterStatus = Literal["draft", "coming_soon", "active", "completed", "archived"]
 EpisodeStatus = Literal["draft", "coming_soon", "released", "hidden"]
 MediaType = Literal["concept-image", "concept-video", "chapter-cover", "chapter-trailer", "episode-video", "episode-thumbnail", "short-film"]
+VlogCommentStatus = Literal["visible", "hidden"]
 
 
 class VlogMediaAsset(BaseModel):
@@ -154,6 +155,10 @@ class VlogEpisodeOut(VlogEpisodeBase):
     id: str
     chapter_id: str
     products: List[ProductSummary] = Field(default_factory=list)
+    view_count: int = 0
+    like_count: int = 0
+    comment_count: int = 0
+    liked_by_current_user: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -165,3 +170,43 @@ class VlogChapterWithEpisodesOut(VlogChapterOut):
 class VlogPageOut(BaseModel):
     settings: VlogSettingsOut
     chapters: List[VlogChapterWithEpisodesOut] = Field(default_factory=list)
+
+
+class VlogEpisodeViewOut(BaseModel):
+    episode_id: str
+    view_count: int
+
+
+class VlogEpisodeLikeOut(BaseModel):
+    episode_id: str
+    liked: bool
+    like_count: int
+
+
+class VlogCommentCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=1000)
+
+
+class VlogCommentUpdate(BaseModel):
+    content: Optional[str] = Field(None, min_length=1, max_length=1000)
+    status: Optional[VlogCommentStatus] = None
+
+
+class VlogCommentOut(BaseModel):
+    id: str
+    episode_id: str
+    user_id: str
+    content: str
+    status: VlogCommentStatus = "visible"
+    author: Optional[str] = None
+    episode_title: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaginatedVlogCommentsOut(BaseModel):
+    items: List[VlogCommentOut] = Field(default_factory=list)
+    total: int
+    page: int
+    page_size: int
+    pages: int

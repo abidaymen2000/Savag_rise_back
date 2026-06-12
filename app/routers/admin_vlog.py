@@ -27,7 +27,9 @@ from app.utils.imagekit_media import upload_vlog_media_to_imagekit
 from app.utils.imagekit_media import VLOG_MEDIA_FOLDERS
 from app.utils.vlog_service import (
     CHAPTERS_COLLECTION,
+    COMMENTS_COLLECTION,
     EPISODES_COLLECTION,
+    LIKES_COLLECTION,
     MEDIA_COLLECTION,
     SETTINGS_COLLECTION,
     VLOG_SETTINGS_KEY,
@@ -189,7 +191,14 @@ async def admin_delete_vlog_chapter(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Chapitre non trouve")
     await db[CHAPTERS_COLLECTION].delete_one({"_id": oid})
     if delete_episodes:
+        episode_ids = [
+            episode["_id"]
+            for episode in await db[EPISODES_COLLECTION].find({"chapter_id": oid}, {"_id": 1}).to_list(length=100)
+        ]
         await db[EPISODES_COLLECTION].delete_many({"chapter_id": oid})
+        if episode_ids:
+            await db[LIKES_COLLECTION].delete_many({"episode_id": {"$in": episode_ids}})
+            await db[COMMENTS_COLLECTION].delete_many({"episode_id": {"$in": episode_ids}})
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -226,6 +235,7 @@ async def admin_create_vlog_episode(
     now = now_utc()
     data = payload.model_dump()
     data["chapter_id"] = chapter_oid
+    data["view_count"] = 0
     data["created_at"] = now
     data["updated_at"] = now
     res = await db[EPISODES_COLLECTION].insert_one(data)
@@ -265,4 +275,6 @@ async def admin_delete_vlog_episode(episode_id: str, _admin=Depends(get_current_
     if not existing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Episode non trouve")
     await db[EPISODES_COLLECTION].delete_one({"_id": oid})
+    await db[LIKES_COLLECTION].delete_many({"episode_id": oid})
+    await db[COMMENTS_COLLECTION].delete_many({"episode_id": oid})
     return Response(status_code=status.HTTP_204_NO_CONTENT)

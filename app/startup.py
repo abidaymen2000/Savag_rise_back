@@ -49,6 +49,8 @@ async def init_mongo():
         # indexer sur product_id et user_id pour accélérer recherches et filtres
         await db["reviews"].create_index("product_id")
         await db["reviews"].create_index("user_id")
+    await db["reviews"].create_index([("status", 1), ("created_at", -1)], background=True)
+    await db["reviews"].create_index([("product_id", 1), ("status", 1), ("created_at", -1)], background=True)
 
 
     if "wishlist" not in existing:
@@ -107,9 +109,27 @@ async def init_mongo():
 
     await db["vlog_episodes"].create_index([("chapter_id", 1), ("order", 1)], background=True)
     await db["vlog_episodes"].create_index([("status", 1), ("release_date", 1)], background=True)
+    await db["vlog_episodes"].create_index("view_count", background=True)
 
     if "vlog_media" not in existing:
         await db.create_collection("vlog_media")
 
     await db["vlog_media"].create_index("file_id", background=True)
     await db["vlog_media"].create_index([("media_type", 1), ("_id", -1)], background=True)
+
+    if "vlog_episode_likes" not in existing:
+        await db.create_collection("vlog_episode_likes")
+
+    await db["vlog_episode_likes"].create_index(
+        [("episode_id", 1), ("user_id", 1)],
+        unique=True,
+        background=True,
+    )
+    await db["vlog_episode_likes"].create_index("user_id", background=True)
+
+    if "vlog_comments" not in existing:
+        await db.create_collection("vlog_comments")
+
+    await db["vlog_comments"].create_index([("episode_id", 1), ("status", 1), ("created_at", -1)], background=True)
+    await db["vlog_comments"].create_index([("user_id", 1), ("created_at", -1)], background=True)
+    await db["vlog_comments"].create_index([("status", 1), ("created_at", -1)], background=True)

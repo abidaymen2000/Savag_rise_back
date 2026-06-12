@@ -32,6 +32,7 @@ async def _attach_author(db, doc: dict) -> dict:
         user = None
 
     doc["author"] = (user or {}).get("full_name") or (user or {}).get("email") or "Utilisateur"
+    doc["status"] = doc.get("status", "visible")
     if "_id" in doc:
         doc["id"] = str(doc["_id"])
     return doc
@@ -102,7 +103,7 @@ async def get_my_reviews(
 @router.get("/{review_id}", response_model=ReviewOut)
 async def read_review(product_id: str, review_id: str, db=Depends(get_db)):
     doc = await get_review(db, product_id, review_id)
-    if not doc:
+    if not doc or doc.get("status") == "hidden":
         raise HTTPException(404, "Avis non trouvé")
     doc = await _attach_author(db, doc)
     return ReviewOut(**doc)
