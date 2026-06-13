@@ -1,4 +1,5 @@
 from typing import Optional
+from datetime import datetime
 from passlib.context import CryptContext
 from bson import ObjectId
 from app.schemas.user import UserCreate
@@ -7,11 +8,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 async def create_user(db, user_in: UserCreate):
     hashed = pwd_context.hash(user_in.password)
+    now = datetime.utcnow()
     doc = {
         "email": user_in.email,
         "hashed_password": hashed,
         "is_active": False,      # bloqué tant que non vérifié
-        "is_verified": False
+        "is_verified": False,
+        "created_at": now,
+        "updated_at": now,
     }
     if user_in.full_name:
         doc["full_name"] = user_in.full_name
@@ -37,7 +41,7 @@ async def mark_email_verified(db, user_id: str):
     oid = ObjectId(user_id)
     await db["users"].update_one(
         {"_id": oid},
-        {"$set": {"is_active": True, "is_verified": True}}
+        {"$set": {"is_active": True, "is_verified": True, "updated_at": datetime.utcnow()}}
     )
 
 async def get_user_by_id(db, oid: ObjectId):
@@ -47,7 +51,7 @@ async def update_user_password(db, user_id: str, new_password: str) -> bool:
     hashed = pwd_context.hash(new_password)
     result = await db["users"].update_one(
         {"_id": ObjectId(user_id)},
-        {"$set": {"hashed_password": hashed}}
+        {"$set": {"hashed_password": hashed, "updated_at": datetime.utcnow()}}
     )
     return result.modified_count == 1
 
@@ -62,6 +66,7 @@ async def update_user_profile(db, user_id: str, data: dict) -> Optional[dict]:
     Met à jour les champs passés dans data pour l'utilisateur user_id.
     """
     oid = ObjectId(user_id)
+    data["updated_at"] = datetime.utcnow()
     await db["users"].update_one({"_id": oid}, {"$set": data})
     return await db["users"].find_one({"_id": oid})
 
@@ -75,6 +80,6 @@ async def change_user_password(db, user_id: str, current_password: str, new_pass
     hashed = pwd_context.hash(new_password)
     res = await db["users"].update_one(
         {"_id": ObjectId(user_id)},
-        {"$set": {"hashed_password": hashed}}
+        {"$set": {"hashed_password": hashed, "updated_at": datetime.utcnow()}}
     )
     return res.modified_count == 1

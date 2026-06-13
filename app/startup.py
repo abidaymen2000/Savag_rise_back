@@ -17,7 +17,14 @@ async def init_mongo():
         await db.create_collection("users")
     # email unique
     await db["users"].create_index("email", unique=True, background=True)
+    await db["users"].create_index("created_at", background=True)
     await db["users"].create_index("loyalty_points_balance", background=True)
+    async for user in db["users"].find({"created_at": {"$exists": False}}, {"_id": 1}):
+        created_at = user["_id"].generation_time.replace(tzinfo=None)
+        await db["users"].update_one(
+            {"_id": user["_id"]},
+            {"$set": {"created_at": created_at, "updated_at": created_at}},
+        )
 
     # --- PRODUCTS ---
     if "products" not in existing:

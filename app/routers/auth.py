@@ -91,6 +91,8 @@ async def signup(
         email=created["email"],
         full_name=created.get("full_name"),
         is_active=created["is_active"],
+        created_at=created.get("created_at"),
+        updated_at=created.get("updated_at"),
     )
 
 @router.post(
@@ -171,6 +173,12 @@ async def forgot_password(
         # Génère un token valable 1h
         token = create_access_token(str(user["_id"]), timedelta(hours=1))
         reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+        template = jinja_env.get_template("reset_password.html")
+        html_body = template.render(
+            user_email=request.email,
+            reset_link=reset_link,
+            logo_url=settings.LOGO_URL
+        )
         subject = "Savage Rise – Réinitialisation de votre mot de passe"
         body = (
             f"Bonjour,\n\n"
@@ -180,7 +188,13 @@ async def forgot_password(
             "Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.\n\n"
             "— L'équipe Savage Rise"
         )
-        background_tasks.add_task(send_email, subject, request.email, body)
+        background_tasks.add_task(
+            send_email,
+            subject=subject,
+            recipient=request.email,
+            body=body,
+            html=html_body
+        )
 
     return {"message": "Si ce compte existe, vous recevrez un email de réinitialisation."}
 

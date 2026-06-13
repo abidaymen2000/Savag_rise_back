@@ -1,5 +1,6 @@
 # app/schemas/user.py
 from typing import Optional
+from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 
 class UserBase(BaseModel):
@@ -12,6 +13,8 @@ class UserCreate(UserBase):
 class UserOut(UserBase):
     id: str
     is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr

@@ -40,6 +40,8 @@ async def read_profile(
         email=current_user["email"],
         full_name=current_user.get("full_name"),
         is_active=current_user["is_active"],
+        created_at=current_user.get("created_at"),
+        updated_at=current_user.get("updated_at"),
     )
 
 @router.get(
@@ -95,6 +97,9 @@ async def update_profile(
         id=str(updated["_id"]),
         email=updated["email"],
         is_active=updated["is_active"],
+        full_name=updated.get("full_name"),
+        created_at=updated.get("created_at"),
+        updated_at=updated.get("updated_at"),
     )
 
 
