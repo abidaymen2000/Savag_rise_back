@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 PackStatus = Literal["draft", "active", "archived"]
@@ -17,10 +17,25 @@ class PackProductSummary(BaseModel):
     in_stock: bool = True
 
 
+class PackComponentConfig(BaseModel):
+    id: Optional[str] = None
+    product_id: str
+    color: Optional[str] = None
+    size: Optional[str] = None
+    qty: int = Field(1, ge=1)
+
+
+class PackComponentOut(PackComponentConfig):
+    id: str
+    product: PackProductSummary
+    locked_variant: bool = False
+
+
 class PackBase(BaseModel):
     title: str
     description: Optional[str] = None
-    product_ids: List[str] = Field(..., min_length=2)
+    product_ids: Optional[List[str]] = Field(None, min_length=2)
+    components: Optional[List[PackComponentConfig]] = Field(None, min_length=2)
     discount_type: PackDiscountType = "percent"
     discount_value: float = Field(..., ge=0)
     status: PackStatus = "draft"
@@ -28,6 +43,12 @@ class PackBase(BaseModel):
     order: int = 0
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
+
+    @model_validator(mode="after")
+    def require_products_or_components(self):
+        if not self.components and not self.product_ids:
+            raise ValueError("Un pack doit contenir au minimum deux composants")
+        return self
 
 
 class PackCreate(PackBase):
@@ -38,6 +59,7 @@ class PackUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     product_ids: Optional[List[str]] = Field(None, min_length=2)
+    components: Optional[List[PackComponentConfig]] = Field(None, min_length=2)
     discount_type: Optional[PackDiscountType] = None
     discount_value: Optional[float] = Field(None, ge=0)
     status: Optional[PackStatus] = None
@@ -50,6 +72,7 @@ class PackUpdate(BaseModel):
 class PackOut(PackBase):
     id: str
     products: List[PackProductSummary] = Field(default_factory=list)
+    components: List[PackComponentOut] = Field(default_factory=list)
     original_price: float = 0
     pack_price: float = 0
     savings_value: float = 0
@@ -58,6 +81,7 @@ class PackOut(PackBase):
 
 
 class PackOrderComponent(BaseModel):
+    component_id: Optional[str] = None
     product_id: str
     color: str
     size: str

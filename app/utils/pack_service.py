@@ -1,10 +1,11 @@
 from datetime import datetime
 from typing import Dict, List, Optional
+from uuid import uuid4
 
 from bson import ObjectId
 from fastapi import HTTPException, status
 
-from app.schemas.pack import PackOut, PackProductSummary
+from app.schemas.pack import PackComponentOut, PackOut, PackProductSummary
 
 
 PACKS_COLLECTION = "packs"
@@ -46,6 +47,51 @@ async def product_summary(db, product_id: str) -> PackProductSummary:
     )
 
 
+def normalize_pack_components(data: Dict) -> Dict:
+    components = data.get("components")
+    if not components:
+        components = [{"product_id": product_id, "qty": 1} for product_id in data.get("product_ids", [])]
+    normalized = []
+    for component in components:
+        item = dict(component)
+        item["id"] = item.get("id") or str(uuid4())
+        item["qty"] = int(item.get("qty", 1) or 1)
+        normalized.append(item)
+    data["components"] = normalized
+    data["product_ids"] = [component["product_id"] for component in normalized]
+    return data
+
+
+def _find_variant(product: Dict, color: Optional[str]) -> Optional[Dict]:
+    if not color:
+        return None
+    for variant in product.get("variants", []):
+        if variant.get("color") == color:
+            return variant
+    return None
+
+
+def _variant_has_size(variant: Dict, size: Optional[str]) -> bool:
+    if not size:
+        return True
+    return any(row.get("size") == size for row in variant.get("sizes", []))
+
+
+async def validate_pack_components(db, components: List[Dict]) -> None:
+    if len(components) < 2:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Un pack doit contenir au minimum deux composants")
+    for component in components:
+        product = await db["products"].find_one({"_id": validate_object_id(component["product_id"], "Produit ID")})
+        if not product:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Un ou plusieurs produits du pack sont introuvables")
+        if component.get("color"):
+            variant = _find_variant(product, component["color"])
+            if not variant:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Une couleur configuree dans le pack est introuvable")
+            if not _variant_has_size(variant, component.get("size")):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Une taille configuree dans le pack est introuvable")
+
+
 def compute_pack_prices(original_price: float, discount_type: str, discount_value: float) -> tuple[float, float]:
     original_price = round(float(original_price), 2)
     if discount_type == "percent":
@@ -70,14 +116,33 @@ def is_pack_public(doc: Dict) -> bool:
 async def pack_out(db, doc: Dict) -> PackOut:
     payload = {k: v for k, v in doc.items() if k != "_id"}
     payload["id"] = str(doc["_id"])
-    products = [await product_summary(db, product_id) for product_id in payload.get("product_ids", [])]
-    original_price = round(sum(product.price for product in products), 2)
+    components = payload.get("components") or [{"id": str(index), "product_id": product_id, "qty": 1} for index, product_id in enumerate(payload.get("product_ids", []), start=1)]
+    component_out = []
+    products = []
+    original_price = 0.0
+    for component in components:
+        product = await product_summary(db, component["product_id"])
+        products.append(product)
+        qty = int(component.get("qty", 1) or 1)
+        original_price += product.price * qty
+        component_out.append(PackComponentOut(
+            id=component["id"],
+            product_id=component["product_id"],
+            color=component.get("color"),
+            size=component.get("size"),
+            qty=qty,
+            product=product,
+            locked_variant=bool(component.get("color") or component.get("size")),
+        ))
+    original_price = round(original_price, 2)
     pack_price, savings = compute_pack_prices(
         original_price,
         payload.get("discount_type", "percent"),
         payload.get("discount_value", 0),
     )
     payload["products"] = products
+    payload["components"] = component_out
+    payload["product_ids"] = [component.product_id for component in component_out]
     payload["original_price"] = original_price
     payload["pack_price"] = pack_price
     payload["savings_value"] = savings
@@ -105,15 +170,29 @@ async def calculate_order_packs(db, selections) -> Dict:
         if not pack or not is_pack_public(pack):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pack indisponible")
 
-        expected_product_ids = set(pack.get("product_ids", []))
-        selected_product_ids = {item.product_id for item in selection.items}
-        if selected_product_ids != expected_product_ids:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Les produits selectionnes ne correspondent pas au pack")
+        components = pack.get("components") or [{"id": str(index), "product_id": product_id, "qty": 1} for index, product_id in enumerate(pack.get("product_ids", []), start=1)]
+        components_by_id = {component["id"]: component for component in components}
+        if len(selection.items) != len(components):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Les composants selectionnes ne correspondent pas au pack")
 
         pack_original = 0.0
         component_payloads = []
         for item in selection.items:
-            line_qty = item.qty * selection.qty
+            component = components_by_id.get(item.component_id) if item.component_id else None
+            if component is None:
+                matches = [candidate for candidate in components if candidate["product_id"] == item.product_id]
+                if len(matches) != 1:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "component_id requis pour ce pack")
+                component = matches[0]
+            if item.product_id != component["product_id"]:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Produit invalide pour ce composant du pack")
+            if component.get("color") and item.color != component["color"]:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Couleur invalide pour ce composant du pack")
+            if component.get("size") and item.size != component["size"]:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Taille invalide pour ce composant du pack")
+
+            component_qty = int(component.get("qty", 1) or 1)
+            line_qty = component_qty * item.qty * selection.qty
             line_total = line_qty * item.unit_price
             pack_original += line_total
             expanded_items.append({
@@ -123,12 +202,14 @@ async def calculate_order_packs(db, selections) -> Dict:
                 "qty": line_qty,
                 "unit_price": item.unit_price,
                 "pack_id": str(pack["_id"]),
+                "pack_component_id": component["id"],
             })
             component_payloads.append({
+                "component_id": component["id"],
                 "product_id": item.product_id,
                 "color": item.color,
                 "size": item.size,
-                "qty": item.qty,
+                "qty": component_qty * item.qty,
                 "unit_price": item.unit_price,
             })
 

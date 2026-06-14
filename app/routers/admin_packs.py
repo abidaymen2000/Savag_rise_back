@@ -5,7 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from app.db import get_db
 from app.dependencies_admin import get_current_admin
 from app.schemas.pack import PackCreate, PackOut, PackStatus, PackUpdate
-from app.utils.pack_service import PACKS_COLLECTION, now_utc, pack_out, validate_object_id, validate_pack_products_exist
+from app.utils.pack_service import (
+    PACKS_COLLECTION,
+    normalize_pack_components,
+    now_utc,
+    pack_out,
+    validate_object_id,
+    validate_pack_components,
+)
 
 router = APIRouter(prefix="/admin/packs", tags=["admin-packs"])
 
@@ -31,9 +38,9 @@ async def admin_create_pack(
     _admin=Depends(get_current_admin),
     db=Depends(get_db),
 ):
-    await validate_pack_products_exist(db, payload.product_ids)
     now = now_utc()
-    data = payload.model_dump()
+    data = normalize_pack_components(payload.model_dump())
+    await validate_pack_components(db, data["components"])
     data["created_at"] = now
     data["updated_at"] = now
     res = await db[PACKS_COLLECTION].insert_one(data)
@@ -62,8 +69,13 @@ async def admin_update_pack(
     if not existing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Pack introuvable")
     data = payload.model_dump(exclude_unset=True)
-    if "product_ids" in data:
-        await validate_pack_products_exist(db, data["product_ids"])
+    if "components" in data or "product_ids" in data:
+        base = {k: v for k, v in existing.items() if k != "_id"}
+        base.update(data)
+        base = normalize_pack_components(base)
+        await validate_pack_components(db, base["components"])
+        data["components"] = base["components"]
+        data["product_ids"] = base["product_ids"]
     data["updated_at"] = now_utc()
     await db[PACKS_COLLECTION].update_one({"_id": oid}, {"$set": data})
     updated = await db[PACKS_COLLECTION].find_one({"_id": oid})
