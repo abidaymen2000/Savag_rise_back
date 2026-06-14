@@ -18,6 +18,7 @@ from ..config import settings
 # === Promo ===
 from app.crud import promocodes as promo_crud
 from app.utils.discounts import validate_and_compute
+from app.utils.pack_service import calculate_order_packs
 from app.utils.loyalty_service import (
     award_points_for_paid_order,
     calculate_redeem,
@@ -56,9 +57,13 @@ async def api_create_order(
     subtotal = 0.0
     for it in order_in.items:
         subtotal += it.qty * it.unit_price
+    pack_calculation = await calculate_order_packs(db, getattr(order_in, "pack_items", []))
+    subtotal += pack_calculation["original_subtotal"]
+    pack_discount_value = pack_calculation["discount_value"]
+    purchasable_items = list(order_in.items) + pack_calculation["expanded_items"]
 
-    total_amount = subtotal
-    discount_value = 0.0
+    total_amount = max(0.0, subtotal - pack_discount_value)
+    discount_value = pack_discount_value
     applied_code = None
     promo_reserved = False
     loyalty_points_used = 0
@@ -79,8 +84,8 @@ async def api_create_order(
         valid, reason, discounted_total, discount_val = validate_and_compute(
             promo,
             user_id=user_id,
-            order_total=subtotal,
-            product_ids=[it.product_id for it in order_in.items],
+            order_total=total_amount,
+            product_ids=[it.product_id if hasattr(it, "product_id") else it["product_id"] for it in purchasable_items],
             category_ids=None,
         )
         if not valid:
@@ -95,7 +100,7 @@ async def api_create_order(
             )
 
         applied_code = promo["code"]
-        discount_value = discount_val or 0.0
+        discount_value += discount_val or 0.0
         total_amount = discounted_total
         promo_reserved = True
 
@@ -133,15 +138,19 @@ async def api_create_order(
     new_order = None
     loyalty_redeemed = False
     try:
-        for it in order_in.items:
+        for it in purchasable_items:
+            product_id = it.product_id if hasattr(it, "product_id") else it["product_id"]
+            color = it.color if hasattr(it, "color") else it["color"]
+            size = it.size if hasattr(it, "size") else it["size"]
+            qty = it.qty if hasattr(it, "qty") else it["qty"]
             await decrement_variant_stock(
                 db,
-                ObjectId(it.product_id),
-                it.color,
-                it.size,
-                it.qty
+                ObjectId(product_id),
+                color,
+                size,
+                qty
             )
-            decremented.append((it.product_id, it.color, it.size, it.qty))
+            decremented.append((product_id, color, size, qty))
 
         data = order_in.dict(exclude={"user_id"})
         data["user_id"] = user_id
@@ -149,6 +158,8 @@ async def api_create_order(
         data["is_guest"] = current_user is None
         data["subtotal"] = subtotal
         data["discount_value"] = discount_value
+        data["pack_discount_value"] = pack_discount_value
+        data["pack_items"] = pack_calculation["pack_items"]
         data["promo_code"] = applied_code
         data["loyalty_points_used"] = loyalty_points_used
         data["loyalty_discount_value"] = loyalty_discount_value

@@ -1,7 +1,8 @@
 # app/schemas/order.py
 from pydantic import BaseModel, EmailStr, Field
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from datetime import datetime
+from app.schemas.pack import PackOrderSelection
 
 class ShippingInfo(BaseModel):
     full_name: str = Field(..., example="Jean Dupont")
@@ -27,13 +28,16 @@ class OrderCreate(BaseModel):
     payment_method: Literal["cod", "stripe", "paypal"] = "cod"
     promo_code: Optional[str] = None              # << NEW
     loyalty_points_to_use: int = Field(0, ge=0)
+    pack_items: List[PackOrderSelection] = Field(default_factory=list)
 
 class OrderOut(OrderCreate):
     id: str
+    pack_items: List[Dict[str, Any]] = Field(default_factory=list)
     user_email: Optional[EmailStr] = None
     is_guest: bool = False
     subtotal: Optional[float] = None              # << NEW (avant remise)
     discount_value: Optional[float] = None        # << NEW (montant de la remise)
+    pack_discount_value: float = 0
     loyalty_points_used: int = 0
     loyalty_discount_value: float = 0
     loyalty_points_earned: int = 0

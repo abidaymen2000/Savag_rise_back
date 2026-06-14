@@ -21,6 +21,7 @@ async def create_order(db, order_data: dict):
     shipping = order_data["shipping"]
     items = order_data["items"]
     payment_method = order_data.get("payment_method", "cod")
+    pack_items = order_data.get("pack_items", [])
 
     # 2) Subtotal (si non fourni)
     subtotal = order_data.get("subtotal")
@@ -36,6 +37,7 @@ async def create_order(db, order_data: dict):
 
     # 4) Code promo (optionnel)
     promo_code = order_data.get("promo_code")
+    pack_discount_value = float(order_data.get("pack_discount_value", 0) or 0)
     shipping_amount = order_data.get("shipping_amount", 0)
     shipping_rate_id = order_data.get("shipping_rate_id")
     shipping_rate_name = order_data.get("shipping_rate_name")
@@ -51,11 +53,13 @@ async def create_order(db, order_data: dict):
         "is_guest": is_guest,
         "shipping": shipping,
         "items": items,
+        "pack_items": pack_items,
         "payment_method": payment_method,
 
         # Remises / totaux
         "subtotal": float(subtotal),
         "discount_value": float(discount_value),
+        "pack_discount_value": pack_discount_value,
         "promo_code": promo_code,
         "loyalty_points_to_use": loyalty_points_to_use,
         "loyalty_points_used": loyalty_points_used,

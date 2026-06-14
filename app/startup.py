@@ -46,6 +46,13 @@ async def init_mongo():
     await db["products"].create_index("variants.color", background=True)
     await db["products"].create_index("variants.size",  background=True)
 
+    if "packs" not in existing:
+        await db.create_collection("packs")
+
+    await db["packs"].create_index([("status", 1), ("order", 1)], background=True)
+    await db["packs"].create_index("product_ids", background=True)
+    await db["packs"].create_index([("starts_at", 1), ("ends_at", 1)], background=True)
+
     # --- ORDERS & AUTRES (si besoin) ---
     if "orders" not in existing:
         await db.create_collection("orders")
