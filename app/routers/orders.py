@@ -43,6 +43,81 @@ def parse_oid(id_str: str) -> ObjectId:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "ID de commande invalide")
 
 
+@router.post("/quote", summary="Calculer les totaux commande sans reserver stock ni promo")
+async def api_quote_order(
+    order_in: OrderCreate,
+    db=Depends(get_db),
+    current_user=Depends(get_current_user_optional),
+):
+    user_id = str(current_user["_id"]) if current_user else None
+    subtotal = sum(it.qty * it.unit_price for it in order_in.items)
+    pack_calculation = await calculate_order_packs(db, getattr(order_in, "pack_items", []))
+    subtotal += pack_calculation["original_subtotal"]
+    pack_discount_value = pack_calculation["discount_value"]
+    total_after_discounts = max(0.0, subtotal - pack_discount_value)
+    discount_value = pack_discount_value
+    promo_discount_value = 0.0
+    applied_code = None
+    purchasable_items = list(order_in.items) + pack_calculation["expanded_items"]
+
+    if getattr(order_in, "promo_code", None):
+        if not current_user:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Connectez-vous pour utiliser un code promo.")
+        promo = await promo_crud.get_by_code(db, order_in.promo_code)
+        if not promo:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Code promo invalide")
+        valid, reason, discounted_total, promo_discount_value = validate_and_compute(
+            promo,
+            user_id=user_id,
+            order_total=total_after_discounts,
+            product_ids=[it.product_id if hasattr(it, "product_id") else it["product_id"] for it in purchasable_items],
+            category_ids=None,
+        )
+        if not valid:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Code promo refuse: {reason}")
+        applied_code = promo["code"]
+        discount_value += promo_discount_value or 0.0
+        total_after_discounts = discounted_total
+
+    loyalty_points_used = 0
+    loyalty_discount_value = 0.0
+    requested_loyalty_points = int(getattr(order_in, "loyalty_points_to_use", 0) or 0)
+    if requested_loyalty_points > 0:
+        if not current_user:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Connectez-vous pour utiliser vos points SR.")
+        loyalty_settings = await loyalty_settings_out(db)
+        loyalty_balance = await get_points_balance(db, user_id)
+        loyalty_points_used, loyalty_discount_value = calculate_redeem(
+            requested_loyalty_points,
+            loyalty_balance,
+            total_after_discounts,
+            loyalty_settings,
+        )
+        total_after_discounts = max(0.0, round(total_after_discounts - loyalty_discount_value, 2))
+
+    shipping_quote = await resolve_shipping_rate(
+        db,
+        country=order_in.shipping.country,
+        city=order_in.shipping.city,
+        order_total=total_after_discounts,
+    )
+    shipping_amount = shipping_quote["shipping_amount"]
+    return {
+        "subtotal": round(subtotal, 2),
+        "pack_discount_value": pack_discount_value,
+        "promo_code": applied_code,
+        "promo_discount_value": promo_discount_value or 0.0,
+        "discount_value": round(discount_value, 2),
+        "loyalty_points_used": loyalty_points_used,
+        "loyalty_discount_value": loyalty_discount_value,
+        "shipping_amount": shipping_amount,
+        "shipping_rate_id": shipping_quote["shipping_rate_id"],
+        "shipping_rate_name": shipping_quote["shipping_rate_name"],
+        "total_amount": round(total_after_discounts + shipping_amount, 2),
+        "pack_items": pack_calculation["pack_items"],
+    }
+
+
 @router.post("/", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
 async def api_create_order(
     order_in: OrderCreate,

@@ -23,7 +23,7 @@ class OrderItem(BaseModel):
 
 class OrderCreate(BaseModel):
     user_id: Optional[str] = None
-    items: List[OrderItem]
+    items: List[OrderItem] = Field(default_factory=list)
     shipping: ShippingInfo
     payment_method: Literal["cod", "stripe", "paypal"] = "cod"
     promo_code: Optional[str] = None              # << NEW
