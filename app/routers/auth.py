@@ -1,16 +1,18 @@
 # app/routers/auth.py
 from datetime import datetime, timedelta
 from time import time
+from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jinja2 import Environment, FileSystemLoader
 from jose import jwt, JWTError
 from bson import ObjectId
+from bson.errors import InvalidId
 
 from app.config import settings
 from app.db import get_db
-from app.crud.users import create_user, get_user_by_email, update_user_password, verify_user, mark_email_verified
+from app.crud.users import create_user, get_user_by_email, get_user_by_id, update_user_password, verify_user, mark_email_verified
 from app.schemas.user import PasswordReset, PasswordResetRequest, UserCreate, UserOut
 from app.utils.email import send_email
 
@@ -37,6 +39,18 @@ def create_access_token(sub: str, expires_delta: timedelta) -> str:
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
+def build_url(base_url: str, path: str, params: dict[str, str]) -> str:
+    return f"{base_url.rstrip('/')}{path}?{urlencode(params)}"
+
+
+def build_email_verification_link(token: str) -> str:
+    return build_url(settings.BACKEND_URL, "/auth/verify-email", {"token": token})
+
+
+def build_verify_success_redirect(token: str) -> str:
+    return build_url(settings.FRONTEND_URL, "/verify-success", {"token": token})
+
+
 @router.post(
     "/signup",
     response_model=UserOut,
@@ -58,7 +72,7 @@ async def signup(
 
     # 2) Génération du token (1h)
     token = create_access_token(user_id, timedelta(hours=1))
-    verify_link = f"{settings.FRONTEND_URL}/verify-success?token={token}"
+    verify_link = build_email_verification_link(token)
 
     # 3) Rendu du template HTML
     template = jinja_env.get_template("verify_email.html")
@@ -147,8 +161,13 @@ async def verify_email(token: str = Query(...), db=Depends(get_db)):
         user_id: str = payload.get("sub")
         if not user_id:
             raise JWTError()
-    except JWTError:
+        user_oid = ObjectId(user_id)
+    except (JWTError, InvalidId):
         # renvoie vers home avec erreur
+        return RedirectResponse(f"{settings.FRONTEND_URL}/?verified=error", status_code=302)
+
+    user = await get_user_by_id(db, user_oid)
+    if not user:
         return RedirectResponse(f"{settings.FRONTEND_URL}/?verified=error", status_code=302)
 
     # 2) Marquer l'email comme vérifié
@@ -158,7 +177,7 @@ async def verify_email(token: str = Query(...), db=Depends(get_db)):
     access_token = create_access_token(user_id, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
 
     # 4) Rediriger vers le front avec le token dans la query
-    return RedirectResponse(f"{settings.FRONTEND_URL}/verify-success?token={access_token}", status_code=302)
+    return RedirectResponse(build_verify_success_redirect(access_token), status_code=302)
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED,
              summary="Demande de reset de mot de passe")
@@ -254,7 +273,7 @@ async def resend_verification(
 
     # 4) Génère un nouveau token (1h) + lien
     token = create_access_token(str(user["_id"]), timedelta(hours=1))
-    verify_link = f"{settings.FRONTEND_URL}/verify-success?token={token}"
+    verify_link = build_email_verification_link(token)
 
     # 5) Email HTML + texte (réutilise ton template verify_email.html)
     template = jinja_env.get_template("verify_email.html")
