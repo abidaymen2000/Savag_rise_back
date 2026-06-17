@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.crud import admin as admin_crud
-from app.dependencies_admin import ALL_ADMIN_PERMISSIONS, admin_capabilities, require_superadmin
+from app.dependencies_admin import admin_capabilities, admin_nav_items, require_superadmin
 from app.models.admin import AdminInDB
 from app.schemas.admin import AdminCreate, AdminPasswordReset, AdminPublic, AdminUpdate
 from app.utils.security_admin import hash_password
@@ -11,21 +11,23 @@ from app.utils.security_admin import hash_password
 router = APIRouter(prefix="/admin/admins", tags=["admin-admins"])
 
 
-def _public(admin: AdminInDB) -> AdminPublic:
+async def _public(admin: AdminInDB) -> AdminPublic:
     return AdminPublic(
-        id=admin.id,
+        id=str(admin.id),
         email=admin.email,
         full_name=admin.full_name,
         is_active=admin.is_active,
         is_superadmin=admin.is_superadmin,
         permissions=admin.permissions,
-        capabilities=admin_capabilities(admin),
-        available_permissions=ALL_ADMIN_PERMISSIONS,
+        capabilities=await admin_capabilities(admin),
+        available_permissions=await admin_crud.list_cms_pages(),
+        nav_items=await admin_nav_items(admin),
     )
 
 
-def _validate_permissions(permissions: list[str]) -> list[str]:
-    unknown = sorted(set(permissions) - set(ALL_ADMIN_PERMISSIONS))
+async def _validate_permissions(permissions: list[str]) -> list[str]:
+    allowed = set(await admin_crud.get_permission_keys())
+    unknown = sorted(set(permissions) - allowed)
     if unknown:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -54,12 +56,12 @@ async def list_admins(
     items = await admin_crud.list_admins(filters, skip, page_size)
     total = await admin_crud.count_admins(filters)
     return {
-        "items": [_public(admin) for admin in items],
+        "items": [await _public(admin) for admin in items],
         "total": total,
         "page": page,
         "page_size": page_size,
         "pages": (total + page_size - 1) // page_size,
-        "available_permissions": ALL_ADMIN_PERMISSIONS,
+        "available_permissions": await admin_crud.list_cms_pages(),
     }
 
 
@@ -68,7 +70,7 @@ async def create_admin(payload: AdminCreate, _super=Depends(require_superadmin))
     existing = await admin_crud.get_by_email(payload.email)
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Admin deja existant")
-    permissions = [] if payload.is_superadmin else _validate_permissions(payload.permissions)
+    permissions = [] if payload.is_superadmin else await _validate_permissions(payload.permissions)
     admin = AdminInDB(
         email=payload.email.lower(),
         password_hash=hash_password(payload.password),
@@ -78,7 +80,7 @@ async def create_admin(payload: AdminCreate, _super=Depends(require_superadmin))
         permissions=permissions,
     )
     created = await admin_crud.create(admin)
-    return _public(created)
+    return await _public(created)
 
 
 @router.get("/{admin_id}", response_model=AdminPublic, summary="Lire un admin")
@@ -86,7 +88,7 @@ async def get_admin(admin_id: str, _super=Depends(require_superadmin)):
     admin = await admin_crud.get_by_id(admin_id)
     if not admin:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin introuvable")
-    return _public(admin)
+    return await _public(admin)
 
 
 @router.patch("/{admin_id}", response_model=AdminPublic, summary="Modifier un admin")
@@ -101,7 +103,7 @@ async def update_admin(
 
     data = payload.model_dump(exclude_unset=True)
     if "permissions" in data:
-        data["permissions"] = _validate_permissions(data["permissions"])
+        data["permissions"] = await _validate_permissions(data["permissions"])
     target_is_superadmin = data.get("is_superadmin", admin.is_superadmin)
     if target_is_superadmin:
         data["permissions"] = []
@@ -111,7 +113,7 @@ async def update_admin(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Vous ne pouvez pas desactiver votre propre compte")
 
     updated = await admin_crud.update_admin(admin_id, data)
-    return _public(updated)
+    return await _public(updated)
 
 
 @router.patch("/{admin_id}/password", response_model=AdminPublic, summary="Reinitialiser le mot de passe admin")
@@ -124,7 +126,7 @@ async def reset_admin_password(
     if not admin:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin introuvable")
     updated = await admin_crud.update_admin(admin_id, {"password_hash": hash_password(payload.new_password)})
-    return _public(updated)
+    return await _public(updated)
 
 
 @router.delete("/{admin_id}", summary="Supprimer un admin")

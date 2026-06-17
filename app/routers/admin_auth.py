@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.dependencies_admin import ALL_ADMIN_PERMISSIONS, admin_capabilities, get_current_admin
+from app.crud.admin import get_by_email, list_cms_pages, update_password_hash
+from app.dependencies_admin import admin_capabilities, admin_nav_items, get_current_admin
 from app.schemas.admin import AdminLogin, AdminPasswordChange, AdminPublic, Token
-from app.crud.admin import get_by_email, update_password_hash
 from app.utils.security_admin import create_admin_jwt, hash_password, verify_password
 
 router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
@@ -23,8 +23,9 @@ async def admin_me(current_admin=Depends(get_current_admin)):
         is_active=current_admin.is_active,
         is_superadmin=current_admin.is_superadmin,
         permissions=current_admin.permissions,
-        capabilities=admin_capabilities(current_admin),
-        available_permissions=ALL_ADMIN_PERMISSIONS,
+        capabilities=await admin_capabilities(current_admin),
+        available_permissions=await list_cms_pages(),
+        nav_items=await admin_nav_items(current_admin),
     )
 
 @router.patch("/change-password", summary="Modifier le mot de passe de l'admin connectÃ©")

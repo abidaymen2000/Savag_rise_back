@@ -2,8 +2,9 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
 
+from app.crud.admin import list_cms_pages
 from app.db import get_db
-from app.dependencies_admin import ALL_ADMIN_PERMISSIONS, admin_capabilities, get_current_admin, is_superadmin
+from app.dependencies_admin import admin_capabilities, get_current_admin, is_superadmin
 
 router = APIRouter(prefix="/admin/dashboard", tags=["admin-dashboard"])
 
@@ -38,11 +39,11 @@ async def admin_dashboard_summary(
     current_admin=Depends(get_current_admin),
 ):
     permissions = current_admin.permissions or []
-    capabilities = admin_capabilities(current_admin)
+    capabilities = await admin_capabilities(current_admin)
     response = {
         "is_superadmin": is_superadmin(current_admin),
         "permissions": permissions,
-        "available_permissions": ALL_ADMIN_PERMISSIONS,
+        "available_permissions": await list_cms_pages(),
         "capabilities": capabilities,
         "sections": capabilities,
         "metrics": {},

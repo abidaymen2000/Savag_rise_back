@@ -117,6 +117,14 @@ async def init_mongo():
         {"$set": {"is_superadmin": True, "permissions": [], "is_active": True}},
     )
 
+    if "cms_pages" not in existing:
+        await db.create_collection("cms_pages")
+
+    await db["cms_pages"].create_index("key", unique=True, background=True)
+    await db["cms_pages"].create_index([("is_active", 1), ("order", 1)], background=True)
+    from app.crud.admin import ensure_default_cms_pages
+    await ensure_default_cms_pages()
+
     if "cms_settings" not in existing:
         await db.create_collection("cms_settings")
 
