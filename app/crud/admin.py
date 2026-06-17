@@ -11,7 +11,7 @@ COL = client[settings.MONGODB_DB_NAME]["admins"]
 PAGES_COL = client[settings.MONGODB_DB_NAME]["cms_pages"]
 
 DEFAULT_CMS_PAGES = [
-    {"key": "dashboard", "label": "Dashboard", "section": "ACCUEIL", "path": "/admin", "icon": "layout-dashboard", "order": 10, "is_active": True, "requires_permission": False},
+    {"key": "dashboard", "label": "Dashboard", "section": "ACCUEIL", "path": "/admin", "icon": "layout-grid", "order": 10, "is_active": True, "requires_permission": False},
     {"key": "orders", "label": "Commandes", "section": "VENTES", "path": "/admin/orders", "icon": "shopping-cart", "order": 100, "is_active": True, "requires_permission": True},
     {"key": "shipping", "label": "Livraison", "section": "VENTES", "path": "/admin/shipping", "icon": "truck", "order": 110, "is_active": True, "requires_permission": True},
     {"key": "promocodes", "label": "Codes promo", "section": "VENTES", "path": "/admin/promocodes", "icon": "percent", "order": 120, "is_active": True, "requires_permission": True},
@@ -113,6 +113,14 @@ async def ensure_default_cms_pages() -> None:
             },
             upsert=True,
         )
+        await PAGES_COL.update_one(
+            {"key": page["key"], "$or": [{"icon": {"$exists": False}}, {"icon": None}, {"icon": ""}]},
+            {"$set": {"icon": page["icon"], "updated_at": now}},
+        )
+    await PAGES_COL.update_one(
+        {"key": "dashboard", "icon": "layout-dashboard"},
+        {"$set": {"icon": "layout-grid", "updated_at": now}},
+    )
 
 
 async def list_cms_pages(include_inactive: bool = False) -> List[Dict[str, Any]]:
