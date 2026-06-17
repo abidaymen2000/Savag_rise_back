@@ -48,7 +48,16 @@ def build_email_verification_link(token: str) -> str:
 
 
 def build_verify_success_redirect(token: str) -> str:
-    return build_url(settings.FRONTEND_URL, "/verify-success", {"token": token})
+    return build_url(
+        settings.FRONTEND_URL,
+        "/verify-success",
+        {
+            "verified": "success",
+            "token": token,
+            "access_token": token,
+            "token_type": "bearer",
+        },
+    )
 
 
 @router.post(
