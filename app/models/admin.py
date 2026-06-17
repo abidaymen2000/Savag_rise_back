@@ -8,8 +8,9 @@ class AdminInDB(BaseModel):
     email: EmailStr
     password_hash: str
     full_name: Optional[str] = None
+    is_active: bool = True
     is_superadmin: bool = False
-    permissions: List[str] = []
+    permissions: List[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

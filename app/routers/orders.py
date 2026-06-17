@@ -8,6 +8,7 @@ from jinja2 import Environment, FileSystemLoader
 from app.crud.variant import decrement_variant_stock, increment_variant_stock
 from app.crud.shipping_rate import resolve_shipping_rate
 from app.dependencies import get_current_user, get_current_user_optional
+from app.dependencies_admin import require_permission
 from app.utils.email import send_email
 
 from ..db import get_db
@@ -419,6 +420,7 @@ async def api_update_status(
     order_id: str = Path(..., description="ID de la commande"),
     new_status: str = Query(..., description="Nouveau statut"),
     db=Depends(get_db),
+    _admin=Depends(require_permission("orders")),
 ):
     oid = parse_oid(order_id)
     await update_order_status(db, oid, new_status)
@@ -432,6 +434,7 @@ async def api_update_status(
 async def api_mark_paid(
     order_id: str = Path(..., description="ID de la commande"),
     db=Depends(get_db),
+    _admin=Depends(require_permission("orders")),
 ):
     oid = parse_oid(order_id)
     await mark_paid(db, oid)

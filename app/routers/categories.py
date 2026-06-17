@@ -5,6 +5,7 @@ from typing import List
 from bson import ObjectId
 from app.crud.product import add_category_to_product
 from app.dependencies import get_db
+from app.dependencies_admin import require_permission
 from app.schemas.category import (
     CategoryCreate, CategoryUpdate, CategoryOut
 )
@@ -45,7 +46,11 @@ async def read_category(category_id: str, db=Depends(get_db)):
     )
 
 @router.post("/", response_model=CategoryOut, status_code=201)
-async def create_new_category(payload: CategoryCreate, db=Depends(get_db)):
+async def create_new_category(
+    payload: CategoryCreate,
+    db=Depends(get_db),
+    _admin=Depends(require_permission("categories")),
+):
     cat = await create_category(db, payload.dict())
     return CategoryOut(
         id=str(cat["_id"]),
@@ -56,7 +61,12 @@ async def create_new_category(payload: CategoryCreate, db=Depends(get_db)):
     )
 
 @router.put("/{category_id}", response_model=CategoryOut)
-async def modify_category(category_id: str, payload: CategoryUpdate, db=Depends(get_db)):
+async def modify_category(
+    category_id: str,
+    payload: CategoryUpdate,
+    db=Depends(get_db),
+    _admin=Depends(require_permission("categories")),
+):
     existing = await get_category(db, category_id)
     if not existing:
         raise HTTPException(404, "Catégorie non trouvée")
@@ -70,7 +80,11 @@ async def modify_category(category_id: str, payload: CategoryUpdate, db=Depends(
     )
 
 @router.delete("/{category_id}", status_code=204)
-async def remove_category(category_id: str, db=Depends(get_db)):
+async def remove_category(
+    category_id: str,
+    db=Depends(get_db),
+    _admin=Depends(require_permission("categories")),
+):
     existing = await get_category(db, category_id)
     if not existing:
         raise HTTPException(404, "Catégorie non trouvée")
@@ -120,7 +134,8 @@ async def products_by_category(
 async def add_product_to_category(
     category_id: str,
     product_id: str,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    _admin=Depends(require_permission("categories")),
 ):
     # 1) Vérifier que la catégorie existe
     cat = await get_category(db, category_id)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.db import get_db
-from app.dependencies_admin import get_current_admin
+from app.dependencies_admin import require_permission
 from app.schemas.loyalty import (
     LoyaltyAdjustmentIn,
     LoyaltyBalanceOut,
@@ -32,14 +32,14 @@ def _transaction_out(doc) -> LoyaltyTransactionOut:
 
 
 @router.get("/settings", response_model=LoyaltySettingsOut)
-async def admin_get_loyalty_settings(_admin=Depends(get_current_admin), db=Depends(get_db)):
+async def admin_get_loyalty_settings(_admin=Depends(require_permission("loyalty")), db=Depends(get_db)):
     return await loyalty_settings_out(db)
 
 
 @router.put("/settings", response_model=LoyaltySettingsOut)
 async def admin_update_loyalty_settings(
     payload: LoyaltySettingsUpdate,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("loyalty")),
     db=Depends(get_db),
 ):
     value = payload.model_dump()
@@ -55,7 +55,7 @@ async def admin_update_loyalty_settings(
 @router.get("/users/{user_id}", response_model=LoyaltyBalanceOut)
 async def admin_get_user_loyalty(
     user_id: str,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("loyalty")),
     db=Depends(get_db),
     limit: int = Query(20, ge=1, le=100),
 ):
@@ -76,7 +76,7 @@ async def admin_get_user_loyalty(
 async def admin_adjust_user_loyalty(
     user_id: str,
     payload: LoyaltyAdjustmentIn,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("loyalty")),
     db=Depends(get_db),
 ):
     user_oid = validate_object_id(user_id, "Utilisateur ID")
@@ -112,7 +112,7 @@ async def admin_adjust_user_loyalty(
 
 @router.get("/transactions", response_model=PaginatedLoyaltyTransactionsOut)
 async def admin_list_loyalty_transactions(
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("loyalty")),
     db=Depends(get_db),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),

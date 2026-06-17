@@ -11,7 +11,7 @@ from app.crud import promocodes as crud
 from app.utils.discounts import validate_and_compute
 
 # 🔐 Auth
-from app.dependencies_admin import get_current_admin            # admin obligatoire pour CRUD
+from app.dependencies_admin import require_permission            # admin obligatoire pour CRUD
 from app.dependencies import get_current_user_optional          # user optionnel pour apply()
 
 router = APIRouter(prefix="/promocodes", tags=["Promo Codes"])
@@ -61,7 +61,7 @@ def _usage_gates(promo: dict, user_id: Optional[str]) -> Tuple[bool, Optional[st
 async def create_promo(
     data: PromoCreate,
     db = Depends(get_db),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("promocodes")),
 ):
     existing = await crud.get_by_code(db, data.code)
     if existing:
@@ -72,7 +72,7 @@ async def create_promo(
 @router.get("/", response_model=List[PromoOut], summary="Lister les codes promo (admin)")
 async def list_promos(
     db = Depends(get_db),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("promocodes")),
     skip: int = 0,
     limit: int = Query(50, le=200),
     q: Optional[str] = None,
@@ -84,7 +84,7 @@ async def list_promos(
 async def get_promo(
     promo_id: str = Path(...),
     db = Depends(get_db),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("promocodes")),
 ):
     doc = await crud.get_by_id(db, promo_id)
     if not doc:
@@ -96,7 +96,7 @@ async def update_promo(
     promo_id: str,
     data: PromoUpdate,
     db = Depends(get_db),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("promocodes")),
 ):
     doc = await crud.update_promocode(db, promo_id, data)
     if not doc:
@@ -107,7 +107,7 @@ async def update_promo(
 async def delete_promo(
     promo_id: str,
     db = Depends(get_db),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("promocodes")),
 ):
     ok = await crud.delete_promocode(db, promo_id)
     if not ok:
@@ -119,7 +119,7 @@ async def delete_promo(
 async def activate_promocode(
     promo_id: str = Path(...),
     db = Depends(get_db),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("promocodes")),
 ):
     promo = await crud.set_promocode_active(db, promo_id, True)
     if not promo:
@@ -130,7 +130,7 @@ async def activate_promocode(
 async def deactivate_promocode(
     promo_id: str = Path(...),
     db = Depends(get_db),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("promocodes")),
 ):
     promo = await crud.set_promocode_active(db, promo_id, False)
     if not promo:
@@ -143,7 +143,7 @@ async def set_promocode_status(
     promo_id: str = Path(...),
     is_active: bool = Query(..., description="true=activer, false=désactiver"),
     db = Depends(get_db),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("promocodes")),
 ):
     promo = await crud.set_promocode_active(db, promo_id, is_active)
     if not promo:

@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.db import get_db
-from app.dependencies_admin import get_current_admin
+from app.dependencies_admin import require_permission
 from app.schemas.pack import PackCreate, PackOut, PackStatus, PackUpdate
 from app.utils.pack_service import (
     PACKS_COLLECTION,
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/admin/packs", tags=["admin-packs"])
 
 @router.get("", response_model=List[PackOut])
 async def admin_list_packs(
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("packs")),
     db=Depends(get_db),
     status_filter: Optional[PackStatus] = Query(None, alias="status"),
     skip: int = Query(0, ge=0),
@@ -35,7 +35,7 @@ async def admin_list_packs(
 @router.post("", response_model=PackOut, status_code=201)
 async def admin_create_pack(
     payload: PackCreate,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("packs")),
     db=Depends(get_db),
 ):
     now = now_utc()
@@ -49,7 +49,7 @@ async def admin_create_pack(
 
 
 @router.get("/{pack_id}", response_model=PackOut)
-async def admin_get_pack(pack_id: str, _admin=Depends(get_current_admin), db=Depends(get_db)):
+async def admin_get_pack(pack_id: str, _admin=Depends(require_permission("packs")), db=Depends(get_db)):
     oid = validate_object_id(pack_id, "Pack ID")
     doc = await db[PACKS_COLLECTION].find_one({"_id": oid})
     if not doc:
@@ -61,7 +61,7 @@ async def admin_get_pack(pack_id: str, _admin=Depends(get_current_admin), db=Dep
 async def admin_update_pack(
     pack_id: str,
     payload: PackUpdate,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("packs")),
     db=Depends(get_db),
 ):
     oid = validate_object_id(pack_id, "Pack ID")
@@ -83,7 +83,7 @@ async def admin_update_pack(
 
 
 @router.delete("/{pack_id}", status_code=204)
-async def admin_delete_pack(pack_id: str, _admin=Depends(get_current_admin), db=Depends(get_db)):
+async def admin_delete_pack(pack_id: str, _admin=Depends(require_permission("packs")), db=Depends(get_db)):
     oid = validate_object_id(pack_id, "Pack ID")
     existing = await db[PACKS_COLLECTION].find_one({"_id": oid})
     if not existing:

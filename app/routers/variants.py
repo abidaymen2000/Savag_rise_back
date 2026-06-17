@@ -12,6 +12,7 @@ from fastapi import (
     File,
 )
 from ..db import get_db
+from app.dependencies_admin import require_permission
 from ..schemas.variant import VariantCreate, VariantOut
 from ..schemas.image import ImageOut
 from ..crud.variant import (
@@ -71,6 +72,7 @@ async def create_variant(
     product_id: str,
     v: VariantCreate,
     db=Depends(get_db),
+    _admin=Depends(require_permission("products")),
 ):
     """
     Body attendu :
@@ -95,6 +97,7 @@ async def change_stock(
     size: str,
     new_stock: int,
     db=Depends(get_db),
+    _admin=Depends(require_permission("products")),
 ):
     pid = parse_oid(product_id)
     modified = await update_variant_stock(db, pid, color, size, new_stock)
@@ -117,6 +120,7 @@ async def upload_variant_color_image(
     color: str,
     file: UploadFile = File(...),
     db=Depends(get_db),
+    _admin=Depends(require_permission("products")),
 ):
     """
     Multipart/form-data { file: <l'image> }
@@ -140,6 +144,7 @@ async def delete_variant_color_image(
     color: str,
     image_id: str,
     db=Depends(get_db),
+    _admin=Depends(require_permission("products")),
 ):
     pid = parse_oid(product_id)
     success = await remove_image_from_variant(db, pid, color, image_id)

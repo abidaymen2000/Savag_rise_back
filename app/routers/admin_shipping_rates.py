@@ -10,7 +10,7 @@ from app.crud.shipping_rate import (
     update_shipping_rate,
 )
 from app.db import get_db
-from app.dependencies_admin import get_current_admin
+from app.dependencies_admin import require_permission
 from app.schemas.shipping_rate import ShippingRateCreate, ShippingRateOut, ShippingRateUpdate
 
 
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/admin/shipping-rates", tags=["admin-shipping-rates"]
 async def admin_create_shipping_rate(
     payload: ShippingRateCreate,
     db=Depends(get_db),
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("shipping")),
 ):
     return await create_shipping_rate(db, payload)
 
@@ -29,7 +29,7 @@ async def admin_create_shipping_rate(
 @router.get("/", response_model=List[ShippingRateOut])
 async def admin_list_shipping_rates(
     db=Depends(get_db),
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("shipping")),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
     is_active: Optional[bool] = None,
@@ -41,7 +41,7 @@ async def admin_list_shipping_rates(
 async def admin_get_shipping_rate(
     rate_id: str,
     db=Depends(get_db),
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("shipping")),
 ):
     rate = await get_shipping_rate(db, rate_id)
     if not rate:
@@ -54,7 +54,7 @@ async def admin_update_shipping_rate(
     rate_id: str,
     payload: ShippingRateUpdate,
     db=Depends(get_db),
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("shipping")),
 ):
     rate = await update_shipping_rate(db, rate_id, payload)
     if not rate:
@@ -66,7 +66,7 @@ async def admin_update_shipping_rate(
 async def admin_delete_shipping_rate(
     rate_id: str,
     db=Depends(get_db),
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("shipping")),
 ):
     deleted = await delete_shipping_rate(db, rate_id)
     if not deleted:

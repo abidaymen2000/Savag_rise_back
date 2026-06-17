@@ -4,7 +4,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.db import get_db
-from app.dependencies_admin import get_current_admin
+from app.dependencies_admin import require_permission
 from app.schemas.review import AdminReviewUpdate, PaginatedReviewsOut, ReviewOut, ReviewStatus
 from app.schemas.vlog import PaginatedVlogCommentsOut, VlogCommentOut, VlogCommentStatus, VlogCommentUpdate
 from app.utils.vlog_service import COMMENTS_COLLECTION, EPISODES_COLLECTION, now_utc, validate_object_id
@@ -63,7 +63,7 @@ async def _review_out(db, doc) -> ReviewOut:
 
 @router.get("", response_model=PaginatedVlogCommentsOut)
 async def admin_list_comments(
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("engagement")),
     db=Depends(get_db),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
@@ -96,7 +96,7 @@ async def admin_list_comments(
 
 @router.get("/product-reviews", response_model=PaginatedReviewsOut)
 async def admin_list_product_reviews(
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("engagement")),
     db=Depends(get_db),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
@@ -139,7 +139,7 @@ async def admin_list_product_reviews(
 async def admin_update_product_review(
     review_id: str,
     payload: AdminReviewUpdate,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("engagement")),
     db=Depends(get_db),
 ):
     oid = validate_object_id(review_id, "Avis ID")
@@ -161,7 +161,7 @@ async def admin_update_product_review(
 @router.delete("/product-reviews/{review_id}", status_code=204)
 async def admin_delete_product_review(
     review_id: str,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("engagement")),
     db=Depends(get_db),
 ):
     oid = validate_object_id(review_id, "Avis ID")
@@ -176,7 +176,7 @@ async def admin_delete_product_review(
 async def admin_update_comment(
     comment_id: str,
     payload: VlogCommentUpdate,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("engagement")),
     db=Depends(get_db),
 ):
     oid = validate_object_id(comment_id, "Commentaire ID")
@@ -198,7 +198,7 @@ async def admin_update_comment(
 @router.delete("/{comment_id}", status_code=204)
 async def admin_delete_comment(
     comment_id: str,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("engagement")),
     db=Depends(get_db),
 ):
     oid = validate_object_id(comment_id, "Commentaire ID")

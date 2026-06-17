@@ -2,7 +2,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from typing import Optional, Literal
 
-from app.dependencies_admin import get_current_admin
+from app.dependencies_admin import require_permission
 from app.db import get_db
 from app.crud.order import list_orders, count_orders
 
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/admin/orders", tags=["admin-orders"])
 @router.get("/", summary="Lister toutes les commandes (admin)")
 async def admin_list_orders(
     # auth admin
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("orders")),
     # pagination
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),

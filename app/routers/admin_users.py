@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Path, status
 from bson import ObjectId
 
 from app.db import get_db
-from app.dependencies_admin import get_current_admin
+from app.dependencies_admin import require_permission
 from app.crud.user_admin import list_users, count_users, set_user_active, get_user
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
@@ -19,7 +19,7 @@ def _parse_oid(s: str) -> ObjectId:
 
 @router.get("/", summary="Lister les utilisateurs (admin)")
 async def admin_list_users(
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("users")),
     db = Depends(get_db),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
@@ -56,7 +56,7 @@ async def admin_list_users(
 @router.patch("/{user_id}/activate", summary="Activer un utilisateur")
 async def activate_user(
     user_id: str = Path(...),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("users")),
     db = Depends(get_db),
 ):
     oid = _parse_oid(user_id)
@@ -74,7 +74,7 @@ async def activate_user(
 @router.patch("/{user_id}/deactivate", summary="Désactiver un utilisateur")
 async def deactivate_user(
     user_id: str = Path(...),
-    _admin = Depends(get_current_admin),
+    _admin = Depends(require_permission("users")),
     db = Depends(get_db),
 ):
     oid = _parse_oid(user_id)

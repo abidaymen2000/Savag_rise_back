@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from app.db import get_db
-from app.dependencies_admin import get_current_admin
+from app.dependencies_admin import require_permission
 from app.schemas.header_video import (
     HeaderVideoConfig,
     HeaderVideoListOut,
@@ -38,7 +38,7 @@ async def read_storefront_header_video(db=Depends(get_db)):
 
 @router.get("/admin/header-videos", response_model=HeaderVideoListOut)
 async def admin_list_header_videos(
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("header_video")),
     limit: int = Query(50, ge=1, le=100),
     skip: int = Query(0, ge=0),
 ):
@@ -47,7 +47,7 @@ async def admin_list_header_videos(
 
 
 @router.get("/admin/header-video", response_model=HeaderVideoConfig)
-async def admin_get_header_video(_admin=Depends(get_current_admin), db=Depends(get_db)):
+async def admin_get_header_video(_admin=Depends(require_permission("header_video")), db=Depends(get_db)):
     doc = await _get_header_video_doc(db)
     if not doc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aucune video de header configuree")
@@ -57,7 +57,7 @@ async def admin_get_header_video(_admin=Depends(get_current_admin), db=Depends(g
 @router.put("/admin/header-video", response_model=HeaderVideoConfig)
 async def admin_update_header_video(
     payload: HeaderVideoUpdate,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("header_video")),
     db=Depends(get_db),
 ):
     value = payload.model_dump()
@@ -73,7 +73,7 @@ async def admin_update_header_video(
 async def admin_upload_header_video(
     file: UploadFile = File(...),
     set_active: bool = Query(True, description="Definir cette video comme video active du header"),
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("header_video")),
     db=Depends(get_db),
 ):
     asset = await upload_header_video_to_imagekit(file)
@@ -92,7 +92,7 @@ async def admin_upload_header_video(
 @router.delete("/admin/header-videos/{file_id}", status_code=204)
 async def admin_delete_header_video(
     file_id: str,
-    _admin=Depends(get_current_admin),
+    _admin=Depends(require_permission("header_video")),
     db=Depends(get_db),
 ):
     await delete_header_video_from_imagekit(file_id)

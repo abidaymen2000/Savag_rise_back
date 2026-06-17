@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from pymongo import ASCENDING, DESCENDING
 
 from app.crud.product import get_product
+from app.dependencies_admin import require_permission
 
 from ..db import get_db
 from .. import crud
@@ -46,7 +47,11 @@ def product_to_out(product: Dict[str, Any]) -> ProductOut:
 
 
 @router.post("/", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
-async def create_product(product: ProductCreate, db=Depends(get_db)):
+async def create_product(
+    product: ProductCreate,
+    db=Depends(get_db),
+    _admin=Depends(require_permission("products")),
+):
     created = await crud.create_product(db, product)
     return product_to_out(created)
 
@@ -145,7 +150,8 @@ async def search_products_endpoint(
 async def update_product_endpoint(
     product_id: str,
     product: ProductUpdate,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    _admin=Depends(require_permission("products")),
 ):
     try:
         ObjectId(product_id)
@@ -173,7 +179,8 @@ async def update_product_endpoint(
 )
 async def delete_product(
     product_id: str,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    _admin=Depends(require_permission("products")),
 ):
     try:
         ObjectId(product_id)
