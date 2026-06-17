@@ -29,6 +29,13 @@ ALL_ADMIN_PERMISSIONS = [
 def is_superadmin(admin: AdminInDB) -> bool:
     return bool(admin.is_superadmin) or admin.email.lower() == ROOT_SUPERADMIN_EMAIL
 
+
+def admin_capabilities(admin: AdminInDB) -> dict[str, bool]:
+    if is_superadmin(admin):
+        return {permission: True for permission in ALL_ADMIN_PERMISSIONS}
+    granted = set(admin.permissions or [])
+    return {permission: permission in granted for permission in ALL_ADMIN_PERMISSIONS}
+
 async def get_current_admin(
     creds: HTTPAuthorizationCredentials = Security(bearer_admin),
 ) -> AdminInDB:
@@ -56,7 +63,13 @@ async def get_current_admin(
 
 async def require_superadmin(current_admin: AdminInDB = Depends(get_current_admin)) -> AdminInDB:
     if not is_superadmin(current_admin):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Acces super admin requis")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            {
+                "code": "ADMIN_SUPERADMIN_REQUIRED",
+                "message": "Acces super admin requis",
+            },
+        )
     return current_admin
 
 
@@ -65,7 +78,16 @@ def require_permission(permission: str) -> Callable:
         if is_superadmin(current_admin):
             return current_admin
         if permission not in (current_admin.permissions or []):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Permission admin insuffisante")
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                {
+                    "code": "ADMIN_PERMISSION_DENIED",
+                    "message": "Permission admin insuffisante",
+                    "required_permission": permission,
+                    "permissions": current_admin.permissions or [],
+                    "capabilities": admin_capabilities(current_admin),
+                },
+            )
         return current_admin
 
     return _dependency

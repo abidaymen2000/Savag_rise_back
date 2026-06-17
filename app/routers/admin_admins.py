@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.crud import admin as admin_crud
-from app.dependencies_admin import ALL_ADMIN_PERMISSIONS, require_superadmin
+from app.dependencies_admin import ALL_ADMIN_PERMISSIONS, admin_capabilities, require_superadmin
 from app.models.admin import AdminInDB
 from app.schemas.admin import AdminCreate, AdminPasswordReset, AdminPublic, AdminUpdate
 from app.utils.security_admin import hash_password
@@ -19,6 +19,8 @@ def _public(admin: AdminInDB) -> AdminPublic:
         is_active=admin.is_active,
         is_superadmin=admin.is_superadmin,
         permissions=admin.permissions,
+        capabilities=admin_capabilities(admin),
+        available_permissions=ALL_ADMIN_PERMISSIONS,
     )
 
 

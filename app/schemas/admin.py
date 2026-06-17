@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from typing import Dict, Optional, List
 
 class AdminLogin(BaseModel):
     email: EmailStr
@@ -12,6 +12,8 @@ class AdminPublic(BaseModel):
     is_active: bool = True
     is_superadmin: bool
     permissions: List[str] = Field(default_factory=list)
+    capabilities: Dict[str, bool] = Field(default_factory=dict)
+    available_permissions: List[str] = Field(default_factory=list)
 
 class Token(BaseModel):
     access_token: str
