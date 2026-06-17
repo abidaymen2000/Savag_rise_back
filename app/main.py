@@ -2,7 +2,7 @@ from typing import Literal
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.routers import admin_admins, admin_auth, admin_cms_pages, admin_comments, admin_dashboard, admin_loyalty, admin_orders, admin_packs, admin_shipping_rates, admin_users, admin_vlog, contact, loyalty, packs, shipping_rates, storefront_vlog
+from app.routers import admin_admins, admin_auth, admin_cms_pages, admin_comments, admin_dashboard, admin_loyalty, admin_orders, admin_packs, admin_shipping_rates, admin_users, admin_vlog, contact, loyalty, meta_catalog, packs, shipping_rates, storefront_vlog
 from app.startup import init_mongo
 
 from .routers import profile, products, upload, variants, orders, auth, reviews, wishlist, categories, promocodes, header_video
@@ -57,6 +57,7 @@ app.include_router(header_video.router)
 app.include_router(storefront_vlog.router)
 app.include_router(loyalty.router)
 app.include_router(packs.router)
+app.include_router(meta_catalog.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_admins.router)
 app.include_router(admin_cms_pages.router)

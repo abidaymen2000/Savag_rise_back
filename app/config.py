@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Front-end URL (pour lien de vérification)
     FRONTEND_URL: str
     BACKEND_URL:str
+
+    # Meta catalog feed
+    META_CATALOG_BRAND: str = "Savage Rise"
+    META_CATALOG_CURRENCY: str = "TND"
+    META_PRODUCT_PATH_TEMPLATE: str = "/products/{id}"
     
     # 🔥 Ajoutez ces lignes pour ImageKit 🔥
     imagekit_public_key: SecretStr
