@@ -58,7 +58,7 @@ async def signup(
 
     # 2) Génération du token (1h)
     token = create_access_token(user_id, timedelta(hours=1))
-    verify_link = f"{settings.BACKEND_URL}/auth/verify-email?token={token}"
+    verify_link = f"{settings.FRONTEND_URL}/verify-success?token={token}"
 
     # 3) Rendu du template HTML
     template = jinja_env.get_template("verify_email.html")
@@ -254,7 +254,7 @@ async def resend_verification(
 
     # 4) Génère un nouveau token (1h) + lien
     token = create_access_token(str(user["_id"]), timedelta(hours=1))
-    verify_link = f"{settings.BACKEND_URL}/auth/verify-email?token={token}"
+    verify_link = f"{settings.FRONTEND_URL}/verify-success?token={token}"
 
     # 5) Email HTML + texte (réutilise ton template verify_email.html)
     template = jinja_env.get_template("verify_email.html")
