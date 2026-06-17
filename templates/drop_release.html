@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ drop_name }}</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;color:#111827;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;">
+    <tr>
+      <td style="padding:28px 24px;text-align:center;background:#111827;color:#ffffff;">
+        <img src="{{ logo_url }}" alt="Savage Rise" width="72" style="display:block;margin:0 auto 16px;">
+        <h1 style="margin:0;font-size:26px;line-height:1.25;">{{ drop_name }}</h1>
+        <p style="margin:10px 0 0;color:#d1d5db;font-size:15px;">{{ title }}</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:28px 24px;text-align:center;">
+        {% if subtitle %}
+        <p style="margin:0 0 12px;font-size:18px;line-height:1.5;color:#111827;">{{ subtitle }}</p>
+        {% endif %}
+        {% if preview %}
+        <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#4b5563;">{{ preview }}</p>
+        {% else %}
+        <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#4b5563;">Le drop est maintenant disponible sur Savage Rise.</p>
+        {% endif %}
+        <a href="{{ cta_url }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:13px 22px;border-radius:6px;">
+          {{ cta_label }}
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px 24px;background:#f9fafb;color:#6b7280;font-size:12px;text-align:center;">
+        Vous recevez cet email car vous avez un compte Savage Rise avec l'adresse {{ recipient_email }}.
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

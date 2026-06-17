@@ -20,6 +20,7 @@ DEFAULT_CMS_PAGES = [
     {"key": "packs", "label": "Packs", "section": "CATALOGUE", "path": "/admin/packs", "icon": "boxes", "order": 210, "is_active": True, "requires_permission": True},
     {"key": "categories", "label": "Categories", "section": "CATALOGUE", "path": "/admin/categories", "icon": "tags", "order": 220, "is_active": True, "requires_permission": True},
     {"key": "header_video", "label": "Video hero", "section": "CONTENU", "path": "/admin/header-video", "icon": "video", "order": 300, "is_active": True, "requires_permission": True},
+    {"key": "drop_countdown", "label": "Drop countdown", "section": "CONTENU", "path": "/admin/drop-countdown", "icon": "timer", "order": 305, "is_active": True, "requires_permission": True},
     {"key": "vlog", "label": "Vlog", "section": "CONTENU", "path": "/admin/vlog", "icon": "clapperboard", "order": 310, "is_active": True, "requires_permission": True},
     {"key": "engagement", "label": "Engagement", "section": "CONTENU", "path": "/admin/engagement", "icon": "message-square", "order": 320, "is_active": True, "requires_permission": True},
     {"key": "users", "label": "Clients", "section": "CLIENTS", "path": "/admin/users", "icon": "users", "order": 400, "is_active": True, "requires_permission": True},

@@ -1,9 +1,11 @@
+import asyncio
 from typing import Literal
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.routers import admin_admins, admin_auth, admin_cms_pages, admin_comments, admin_dashboard, admin_loyalty, admin_orders, admin_packs, admin_shipping_rates, admin_users, admin_vlog, contact, loyalty, meta_catalog, packs, shipping_rates, storefront_vlog
+from app.routers import admin_admins, admin_auth, admin_cms_pages, admin_comments, admin_dashboard, admin_loyalty, admin_orders, admin_packs, admin_shipping_rates, admin_users, admin_vlog, contact, drop_countdown, loyalty, meta_catalog, packs, shipping_rates, storefront_vlog
 from app.startup import init_mongo
+from app.utils.drop_countdown_notifier import drop_countdown_monitor_loop
 
 from .routers import profile, products, upload, variants, orders, auth, reviews, wishlist, categories, promocodes, header_video
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +41,14 @@ async def check_health():
 async def on_startup():
     # Crée collections et index avant que l'app n'accepte des requêtes
     await init_mongo()
+    app.state.drop_countdown_task = asyncio.create_task(drop_countdown_monitor_loop())
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    task = getattr(app.state, "drop_countdown_task", None)
+    if task:
+        task.cancel()
 
 # enregistrement des routes
 app.include_router(upload.router)
@@ -58,6 +68,7 @@ app.include_router(storefront_vlog.router)
 app.include_router(loyalty.router)
 app.include_router(packs.router)
 app.include_router(meta_catalog.router)
+app.include_router(drop_countdown.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_admins.router)
 app.include_router(admin_cms_pages.router)
