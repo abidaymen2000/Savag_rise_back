@@ -45,3 +45,10 @@ class DropCountdownOut(DropCountdownBase):
     is_released: bool
     notification_sent_at: Optional[datetime] = None
     notification_recipients_count: int = 0
+    subscribers_count: int = 0
+
+
+class DropNotificationStatus(BaseModel):
+    drop_key: str
+    is_subscribed: bool
+    subscribers_count: int = 0

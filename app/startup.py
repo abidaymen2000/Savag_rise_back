@@ -129,6 +129,14 @@ async def init_mongo():
         await db.create_collection("cms_settings")
     await db["cms_settings"].create_index([("value.launch_at", 1), ("notification_sent_at", 1)], background=True)
     await db["users"].create_index([("is_active", 1), ("email", 1)], background=True)
+    if "drop_notification_subscribers" not in existing:
+        await db.create_collection("drop_notification_subscribers")
+    await db["drop_notification_subscribers"].create_index(
+        [("drop_key", 1), ("user_id", 1)],
+        unique=True,
+        background=True,
+    )
+    await db["drop_notification_subscribers"].create_index("drop_key", background=True)
 
     if "loyalty_transactions" not in existing:
         await db.create_collection("loyalty_transactions")

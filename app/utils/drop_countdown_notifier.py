@@ -3,11 +3,17 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
+from bson import ObjectId
 from jinja2 import Environment, FileSystemLoader
 
 from app.config import settings
 from app.db import client
-from app.routers.drop_countdown import DROP_COUNTDOWN_KEY, SETTINGS_COLLECTION
+from app.routers.drop_countdown import (
+    DROP_COUNTDOWN_KEY,
+    SETTINGS_COLLECTION,
+    SUBSCRIBERS_COLLECTION,
+    drop_key_from_value,
+)
 from app.utils.email import send_email
 
 logger = logging.getLogger("drop_countdown")
@@ -75,8 +81,29 @@ async def send_due_drop_notification_once() -> bool:
         return False
 
     value = claim["value"]
-    recipients = await db["users"].find(
-        {"email": {"$exists": True, "$ne": None}, "is_active": True},
+    drop_key = drop_key_from_value(value)
+    subscriptions = await db[SUBSCRIBERS_COLLECTION].find(
+        {"drop_key": drop_key},
+        {"user_id": 1, "email": 1},
+    ).to_list(length=20000)
+    user_ids = []
+    fallback_emails: Dict[str, str] = {}
+    for subscription in subscriptions:
+        user_id = subscription.get("user_id")
+        if not user_id:
+            continue
+        fallback_emails[user_id] = subscription.get("email")
+        try:
+            user_ids.append(ObjectId(user_id))
+        except Exception:
+            continue
+
+    users = await db["users"].find(
+        {
+            "_id": {"$in": user_ids},
+            "email": {"$exists": True, "$ne": None},
+            "is_active": True,
+        },
         {"email": 1},
     ).to_list(length=20000)
 
@@ -84,8 +111,8 @@ async def send_due_drop_notification_once() -> bool:
     failure_count = 0
     subject = value.get("email_subject") or "Le nouveau drop Savage Rise est disponible"
 
-    for user in recipients:
-        email = user.get("email")
+    for user in users:
+        email = user.get("email") or fallback_emails.get(str(user["_id"]))
         if not email:
             continue
         try:
