@@ -21,10 +21,12 @@ class HeaderVideoContent(BaseModel):
 
 class HeaderVideoConfig(HeaderVideoContent):
     video: HeaderVideoAsset
+    image: Optional[HeaderVideoAsset] = None
 
 
 class HeaderVideoUpdate(HeaderVideoContent):
     video: HeaderVideoAsset
+    image: Optional[HeaderVideoAsset] = None
 
 
 class HeaderVideoUploadOut(HeaderVideoConfig):

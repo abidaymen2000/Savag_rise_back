@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -52,3 +52,24 @@ class DropNotificationStatus(BaseModel):
     drop_key: str
     is_subscribed: bool
     subscribers_count: int = 0
+
+
+class DropSubscriberOut(BaseModel):
+    id: str
+    drop_key: str
+    user_id: str
+    email: str
+    full_name: Optional[str] = None
+    user_is_active: bool = True
+    user_created_at: Optional[datetime] = None
+    subscribed_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class DropSubscribersPage(BaseModel):
+    items: List[DropSubscriberOut]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+    drop_key: Optional[str] = None
