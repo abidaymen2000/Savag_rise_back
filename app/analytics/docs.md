@@ -43,6 +43,8 @@ CMS traffic endpoints:
 
 ```txt
 GET /admin/traffic/dashboard
+GET /admin/traffic/all-data?page=1&page_size=100
+GET /admin/traffic/realtime?window_minutes=1
 GET /admin/traffic/overview
 GET /admin/traffic/timeseries?metric=visitors&interval=day
 GET /admin/traffic/breakdown
@@ -52,7 +54,13 @@ GET /admin/traffic/buttons
 GET /admin/traffic/products
 GET /admin/traffic/funnel
 GET /admin/traffic/recent-events
+GET /admin/traffic/events?page=1&page_size=50
 ```
+
+Use `GET /admin/traffic/all-data` as the main CMS bootstrap call. It returns KPI cards,
+funnel, chart series, source/device/account breakdowns, pages, buttons, products, recent
+events, and a paginated raw events table in one response. Use `GET /admin/traffic/realtime?window_minutes=1`
+for live widgets and refresh it every few seconds from the CMS.
 
 Suggested lightweight helper:
 

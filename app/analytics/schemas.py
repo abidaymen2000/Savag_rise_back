@@ -125,3 +125,24 @@ class TrafficDashboardResponse(BaseModel):
     buttons: TrafficButtonsResponse
     products: ProductAnalyticsResponse
     recent_events: List[AnalyticsEventRead]
+
+
+class AnalyticsEventPageResponse(BaseModel):
+    items: List[AnalyticsEventRead]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class TrafficRealtimeResponse(BaseModel):
+    window_minutes: int
+    overview: AnalyticsOverviewResponse
+    funnel: AnalyticsFunnelResponse
+    time_series: List[TrafficTimeSeriesResponse]
+    breakdown: TrafficBreakdownResponse
+    recent_events: List[AnalyticsEventRead]
+
+
+class TrafficAllDataResponse(TrafficDashboardResponse):
+    events: AnalyticsEventPageResponse

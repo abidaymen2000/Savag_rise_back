@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Any, Dict, Iterable, Optional
 
 from bson import ObjectId
@@ -241,12 +241,17 @@ def _visitor_identity_expression() -> dict:
 
 
 def _period_expression(interval: str) -> dict:
-    date_format = "%Y-%m-%d %H:00" if interval == "hour" else "%Y-%m-%d"
+    if interval == "minute":
+        date_format = "%Y-%m-%d %H:%M"
+    elif interval == "hour":
+        date_format = "%Y-%m-%d %H:00"
+    else:
+        date_format = "%Y-%m-%d"
     return {"$dateToString": {"format": date_format, "date": "$created_at"}}
 
 
 async def time_series(db, filters: dict, metric: str, interval: str = "day") -> dict:
-    interval = "hour" if interval == "hour" else "day"
+    interval = interval if interval in {"minute", "hour"} else "day"
     period = _period_expression(interval)
     match = dict(filters)
 
@@ -420,6 +425,10 @@ async def traffic_dashboard(db, filters: dict, interval: str = "day") -> dict:
     }
 
 
+async def count_all(db, filters: dict) -> int:
+    return await db[ANALYTICS_EVENTS_COLLECTION].count_documents(filters)
+
+
 def event_to_read(doc: dict) -> dict:
     payload = {k: v for k, v in doc.items() if k != "_id"}
     payload["id"] = str(doc["_id"])
@@ -435,3 +444,64 @@ async def recent_events(db, filters: dict, limit: int = 50) -> list[dict]:
         .to_list(length=limit)
     )
     return [event_to_read(doc) for doc in docs]
+
+
+async def event_page(db, filters: dict, page: int = 1, page_size: int = 50) -> dict:
+    page = max(page, 1)
+    page_size = max(1, min(page_size, 500))
+    total = await count_all(db, filters)
+    skip = (page - 1) * page_size
+    docs = await (
+        db[ANALYTICS_EVENTS_COLLECTION]
+        .find(filters)
+        .sort("created_at", DESCENDING)
+        .skip(skip)
+        .limit(page_size)
+        .to_list(length=page_size)
+    )
+    return {
+        "items": [event_to_read(doc) for doc in docs],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size,
+    }
+
+
+async def traffic_all_data(
+    db,
+    filters: dict,
+    interval: str = "day",
+    page: int = 1,
+    page_size: int = 100,
+) -> dict:
+    dashboard = await traffic_dashboard(db, filters, interval=interval)
+    dashboard["events"] = await event_page(db, filters, page=page, page_size=page_size)
+    return dashboard
+
+
+async def traffic_realtime(db, filters: dict, window_minutes: int = 1) -> dict:
+    window_minutes = max(1, min(window_minutes, 1440))
+    realtime_filters = {
+        **filters,
+        "created_at": {
+            **filters.get("created_at", {}),
+            "$gte": datetime.utcnow() - timedelta(minutes=window_minutes),
+        },
+    }
+    return {
+        "window_minutes": window_minutes,
+        "overview": await overview(db, realtime_filters),
+        "funnel": await funnel(db, realtime_filters),
+        "time_series": [
+            await time_series(db, realtime_filters, "visitors", "minute"),
+            await time_series(db, realtime_filters, "page_views", "minute"),
+            await time_series(db, realtime_filters, "product_views", "minute"),
+            await time_series(db, realtime_filters, "add_to_cart", "minute"),
+            await time_series(db, realtime_filters, "checkout_started", "minute"),
+            await time_series(db, realtime_filters, "orders_completed", "minute"),
+            await time_series(db, realtime_filters, "revenue", "minute"),
+        ],
+        "breakdown": await traffic_breakdown(db, realtime_filters),
+        "recent_events": await recent_events(db, realtime_filters, limit=100),
+    }

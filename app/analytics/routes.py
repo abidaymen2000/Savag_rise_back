@@ -5,15 +5,18 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from app.analytics import service
 from app.analytics.schemas import (
+    AnalyticsEventPageResponse,
     AnalyticsEventCreate,
     AnalyticsEventRead,
     AnalyticsFunnelResponse,
     AnalyticsOverviewResponse,
     ProductAnalyticsResponse,
+    TrafficAllDataResponse,
     TrafficBreakdownResponse,
     TrafficButtonsResponse,
     TrafficDashboardResponse,
     TrafficPagesResponse,
+    TrafficRealtimeResponse,
     TrafficSourceAnalyticsResponse,
     TrafficTimeSeriesResponse,
 )
@@ -62,7 +65,11 @@ async def create_analytics_event(
         metadata=metadata,
         request=request,
     )
-    return {"success": True, "tracked": tracked is not None}
+    return {
+        "success": True,
+        "tracked": tracked is not None,
+        "event": service.event_to_read(tracked) if tracked else None,
+    }
 
 
 def _filters(
@@ -125,11 +132,39 @@ async def admin_analytics_recent_events(
 @router.get("/admin/traffic/dashboard", response_model=TrafficDashboardResponse)
 async def admin_traffic_dashboard(
     filters: dict = Depends(_filters),
-    interval: str = Query("day", regex="^(day|hour)$"),
+    interval: str = Query("day", regex="^(day|hour|minute)$"),
     db=Depends(get_db),
     _admin=Depends(require_permission("traffic")),
 ):
     return await service.traffic_dashboard(db, filters, interval=interval)
+
+
+@router.get("/admin/traffic/all-data", response_model=TrafficAllDataResponse)
+async def admin_traffic_all_data(
+    filters: dict = Depends(_filters),
+    interval: str = Query("day", regex="^(day|hour|minute)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=500),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.traffic_all_data(
+        db,
+        filters,
+        interval=interval,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/admin/traffic/realtime", response_model=TrafficRealtimeResponse)
+async def admin_traffic_realtime(
+    filters: dict = Depends(_filters),
+    window_minutes: int = Query(1, ge=1, le=1440),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.traffic_realtime(db, filters, window_minutes=window_minutes)
 
 
 @router.get("/admin/traffic/overview", response_model=AnalyticsOverviewResponse)
@@ -148,7 +183,7 @@ async def admin_traffic_time_series(
         "visitors",
         regex="^(visitors|page_views|product_views|add_to_cart|checkout_started|orders_completed|notify_me_clicks|revenue)$",
     ),
-    interval: str = Query("day", regex="^(day|hour)$"),
+    interval: str = Query("day", regex="^(day|hour|minute)$"),
     db=Depends(get_db),
     _admin=Depends(require_permission("traffic")),
 ):
@@ -219,3 +254,14 @@ async def admin_traffic_recent_events(
     _admin=Depends(require_permission("traffic")),
 ):
     return await service.recent_events(db, filters, limit=limit)
+
+
+@router.get("/admin/traffic/events", response_model=AnalyticsEventPageResponse)
+async def admin_traffic_events(
+    filters: dict = Depends(_filters),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.event_page(db, filters, page=page, page_size=page_size)
