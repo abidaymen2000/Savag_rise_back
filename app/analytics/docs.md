@@ -20,6 +20,40 @@ srTrack("button_clicked", {
 });
 ```
 
+For the CMS traffic page, send these fields when available:
+
+```js
+srTrack("page_viewed", {
+  page_path: window.location.pathname,
+  page_title: document.title,
+  url: window.location.href,
+  source: new URLSearchParams(window.location.search).get("utm_source"),
+  utm_campaign: new URLSearchParams(window.location.search).get("utm_campaign")
+});
+
+srTrack("button_clicked", {
+  button_id: "product-notify-me",
+  label: "Notify me",
+  page_path: window.location.pathname,
+  product_id: "sr-notte-oversized-tee"
+});
+```
+
+CMS traffic endpoints:
+
+```txt
+GET /admin/traffic/dashboard
+GET /admin/traffic/overview
+GET /admin/traffic/timeseries?metric=visitors&interval=day
+GET /admin/traffic/breakdown
+GET /admin/traffic/sources
+GET /admin/traffic/pages
+GET /admin/traffic/buttons
+GET /admin/traffic/products
+GET /admin/traffic/funnel
+GET /admin/traffic/recent-events
+```
+
 Suggested lightweight helper:
 
 ```js

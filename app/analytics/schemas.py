@@ -39,6 +39,12 @@ class AnalyticsMetric(BaseModel):
     count: int
 
 
+class AnalyticsValueMetric(BaseModel):
+    label: str
+    count: int
+    value: Optional[float] = None
+
+
 class ProductMetric(BaseModel):
     product_id: str
     product_name: Optional[str] = None
@@ -81,3 +87,41 @@ class TrafficSourceAnalyticsResponse(BaseModel):
     sources: List[AnalyticsMetric]
     campaigns: List[AnalyticsMetric] = Field(default_factory=list)
 
+
+class TrafficTimeSeriesPoint(BaseModel):
+    period: str
+    count: int
+    value: Optional[float] = None
+
+
+class TrafficTimeSeriesResponse(BaseModel):
+    metric: str
+    interval: str
+    points: List[TrafficTimeSeriesPoint]
+
+
+class TrafficBreakdownResponse(BaseModel):
+    sources: List[AnalyticsMetric]
+    campaigns: List[AnalyticsMetric]
+    devices: List[AnalyticsMetric]
+    account_status: List[AnalyticsMetric]
+    events: List[AnalyticsMetric]
+
+
+class TrafficPagesResponse(BaseModel):
+    pages: List[AnalyticsValueMetric]
+
+
+class TrafficButtonsResponse(BaseModel):
+    buttons: List[AnalyticsValueMetric]
+
+
+class TrafficDashboardResponse(BaseModel):
+    overview: AnalyticsOverviewResponse
+    funnel: AnalyticsFunnelResponse
+    time_series: List[TrafficTimeSeriesResponse]
+    breakdown: TrafficBreakdownResponse
+    pages: TrafficPagesResponse
+    buttons: TrafficButtonsResponse
+    products: ProductAnalyticsResponse
+    recent_events: List[AnalyticsEventRead]

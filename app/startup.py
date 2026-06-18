@@ -70,6 +70,9 @@ async def init_mongo():
     await db["analytics_events"].create_index([("user_id", 1), ("created_at", -1)], background=True)
     await db["analytics_events"].create_index([("anonymous_id", 1), ("created_at", -1)], background=True)
     await db["analytics_events"].create_index([("session_id", 1), ("created_at", -1)], background=True)
+    await db["analytics_events"].create_index([("metadata.page_path", 1), ("created_at", -1)], background=True)
+    await db["analytics_events"].create_index([("metadata.button_id", 1), ("created_at", -1)], background=True)
+    await db["analytics_events"].create_index([("has_account", 1), ("created_at", -1)], background=True)
 
     if "reviews" not in existing:
         await db.create_collection("reviews")

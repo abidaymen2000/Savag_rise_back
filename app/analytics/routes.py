@@ -10,7 +10,12 @@ from app.analytics.schemas import (
     AnalyticsFunnelResponse,
     AnalyticsOverviewResponse,
     ProductAnalyticsResponse,
+    TrafficBreakdownResponse,
+    TrafficButtonsResponse,
+    TrafficDashboardResponse,
+    TrafficPagesResponse,
     TrafficSourceAnalyticsResponse,
+    TrafficTimeSeriesResponse,
 )
 from app.analytics.utils import get_client_ip, is_allowed_event, rate_limit_allows
 from app.db import get_db
@@ -116,3 +121,101 @@ async def admin_analytics_recent_events(
 ):
     return await service.recent_events(db, filters, limit=limit)
 
+
+@router.get("/admin/traffic/dashboard", response_model=TrafficDashboardResponse)
+async def admin_traffic_dashboard(
+    filters: dict = Depends(_filters),
+    interval: str = Query("day", regex="^(day|hour)$"),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.traffic_dashboard(db, filters, interval=interval)
+
+
+@router.get("/admin/traffic/overview", response_model=AnalyticsOverviewResponse)
+async def admin_traffic_overview(
+    filters: dict = Depends(_filters),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.overview(db, filters)
+
+
+@router.get("/admin/traffic/timeseries", response_model=TrafficTimeSeriesResponse)
+async def admin_traffic_time_series(
+    filters: dict = Depends(_filters),
+    metric: str = Query(
+        "visitors",
+        regex="^(visitors|page_views|product_views|add_to_cart|checkout_started|orders_completed|notify_me_clicks|revenue)$",
+    ),
+    interval: str = Query("day", regex="^(day|hour)$"),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.time_series(db, filters, metric=metric, interval=interval)
+
+
+@router.get("/admin/traffic/breakdown", response_model=TrafficBreakdownResponse)
+async def admin_traffic_breakdown(
+    filters: dict = Depends(_filters),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.traffic_breakdown(db, filters)
+
+
+@router.get("/admin/traffic/sources", response_model=TrafficSourceAnalyticsResponse)
+async def admin_traffic_sources(
+    filters: dict = Depends(_filters),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.traffic_sources(db, filters)
+
+
+@router.get("/admin/traffic/pages", response_model=TrafficPagesResponse)
+async def admin_traffic_pages(
+    filters: dict = Depends(_filters),
+    limit: int = Query(20, ge=1, le=100),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.traffic_pages(db, filters, limit=limit)
+
+
+@router.get("/admin/traffic/buttons", response_model=TrafficButtonsResponse)
+async def admin_traffic_buttons(
+    filters: dict = Depends(_filters),
+    limit: int = Query(20, ge=1, le=100),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.traffic_buttons(db, filters, limit=limit)
+
+
+@router.get("/admin/traffic/products", response_model=ProductAnalyticsResponse)
+async def admin_traffic_products(
+    filters: dict = Depends(_filters),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.product_analytics(db, filters)
+
+
+@router.get("/admin/traffic/funnel", response_model=AnalyticsFunnelResponse)
+async def admin_traffic_funnel(
+    filters: dict = Depends(_filters),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.funnel(db, filters)
+
+
+@router.get("/admin/traffic/recent-events", response_model=list[AnalyticsEventRead])
+async def admin_traffic_recent_events(
+    filters: dict = Depends(_filters),
+    limit: int = Query(50, ge=1, le=200),
+    db=Depends(get_db),
+    _admin=Depends(require_permission("traffic")),
+):
+    return await service.recent_events(db, filters, limit=limit)

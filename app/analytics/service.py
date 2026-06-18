@@ -231,6 +231,195 @@ async def traffic_sources(db, filters: dict) -> dict:
     }
 
 
+def _visitor_identity_expression() -> dict:
+    return {
+        "$ifNull": [
+            "$user_id",
+            {"$ifNull": ["$anonymous_id", {"$ifNull": ["$session_id", "$ip_address"]}]},
+        ]
+    }
+
+
+def _period_expression(interval: str) -> dict:
+    date_format = "%Y-%m-%d %H:00" if interval == "hour" else "%Y-%m-%d"
+    return {"$dateToString": {"format": date_format, "date": "$created_at"}}
+
+
+async def time_series(db, filters: dict, metric: str, interval: str = "day") -> dict:
+    interval = "hour" if interval == "hour" else "day"
+    period = _period_expression(interval)
+    match = dict(filters)
+
+    if metric == "visitors":
+        match["event_name"] = "page_viewed"
+        pipeline = [
+            {"$match": match},
+            {"$group": {"_id": {"period": period, "visitor": _visitor_identity_expression()}}},
+            {"$group": {"_id": "$_id.period", "count": {"$sum": 1}}},
+            {"$sort": {"_id": 1}},
+        ]
+    elif metric == "revenue":
+        match["event_name"] = "order_completed"
+        pipeline = [
+            {"$match": match},
+            {
+                "$group": {
+                    "_id": period,
+                    "count": {"$sum": 1},
+                    "value": {"$sum": {"$ifNull": ["$metadata.total_amount", 0]}},
+                }
+            },
+            {"$sort": {"_id": 1}},
+        ]
+    else:
+        event_by_metric = {
+            "page_views": "page_viewed",
+            "product_views": "product_viewed",
+            "add_to_cart": "add_to_cart",
+            "checkout_started": "checkout_started",
+            "orders_completed": "order_completed",
+            "notify_me_clicks": "notify_me_clicked",
+        }
+        match["event_name"] = event_by_metric.get(metric, metric)
+        pipeline = [
+            {"$match": match},
+            {"$group": {"_id": period, "count": {"$sum": 1}}},
+            {"$sort": {"_id": 1}},
+        ]
+
+    rows = await db[ANALYTICS_EVENTS_COLLECTION].aggregate(pipeline).to_list(length=1000)
+    return {
+        "metric": metric,
+        "interval": interval,
+        "points": [
+            {"period": row["_id"], "count": int(row.get("count", 0)), "value": row.get("value")}
+            for row in rows
+        ],
+    }
+
+
+def _device_from_user_agent(user_agent: Optional[str]) -> str:
+    value = (user_agent or "").lower()
+    if "ipad" in value or "tablet" in value:
+        return "tablet"
+    if "mobile" in value or "iphone" in value or "android" in value:
+        return "mobile"
+    if value:
+        return "desktop"
+    return "unknown"
+
+
+async def device_counts(db, filters: dict) -> list[dict]:
+    docs = await db[ANALYTICS_EVENTS_COLLECTION].find(filters, {"user_agent": 1}).to_list(length=10000)
+    counts: dict[str, int] = {}
+    for doc in docs:
+        device = _device_from_user_agent(doc.get("user_agent"))
+        counts[device] = counts.get(device, 0) + 1
+    return [
+        {"label": label, "count": count}
+        for label, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+
+async def account_status_counts(db, filters: dict) -> list[dict]:
+    total_with_account = await db[ANALYTICS_EVENTS_COLLECTION].count_documents({**filters, "has_account": True})
+    total_without_account = await db[ANALYTICS_EVENTS_COLLECTION].count_documents({**filters, "has_account": False})
+    return [
+        {"label": "with_account", "count": total_with_account},
+        {"label": "anonymous", "count": total_without_account},
+    ]
+
+
+async def traffic_breakdown(db, filters: dict) -> dict:
+    sources = await traffic_sources(db, filters)
+    return {
+        "sources": sources["sources"],
+        "campaigns": sources["campaigns"],
+        "devices": await device_counts(db, filters),
+        "account_status": await account_status_counts(db, filters),
+        "events": await grouped_counts(db, filters, "event_name", limit=50),
+    }
+
+
+async def top_metadata_values(
+    db,
+    filters: dict,
+    event_name: str,
+    metadata_field: str,
+    fallback_field: Optional[str] = None,
+    limit: int = 20,
+) -> list[dict]:
+    value_expression: Any = f"$metadata.{metadata_field}"
+    if fallback_field:
+        value_expression = {"$ifNull": [f"$metadata.{metadata_field}", f"$metadata.{fallback_field}"]}
+    pipeline = [
+        {"$match": {**filters, "event_name": event_name}},
+        {"$project": {"label": value_expression, "value": "$metadata.total_amount"}},
+        {"$match": {"label": {"$nin": [None, ""]}}},
+        {
+            "$group": {
+                "_id": "$label",
+                "count": {"$sum": 1},
+                "value": {"$sum": {"$ifNull": ["$value", 0]}},
+            }
+        },
+        {"$sort": {"count": -1}},
+        {"$limit": limit},
+    ]
+    rows = await db[ANALYTICS_EVENTS_COLLECTION].aggregate(pipeline).to_list(length=limit)
+    return [
+        {"label": row["_id"], "count": int(row["count"]), "value": row.get("value")}
+        for row in rows
+    ]
+
+
+async def traffic_pages(db, filters: dict, limit: int = 20) -> dict:
+    return {
+        "pages": await top_metadata_values(
+            db,
+            filters,
+            "page_viewed",
+            metadata_field="page_path",
+            fallback_field="url",
+            limit=limit,
+        )
+    }
+
+
+async def traffic_buttons(db, filters: dict, limit: int = 20) -> dict:
+    return {
+        "buttons": await top_metadata_values(
+            db,
+            filters,
+            "button_clicked",
+            metadata_field="button_id",
+            fallback_field="label",
+            limit=limit,
+        )
+    }
+
+
+async def traffic_dashboard(db, filters: dict, interval: str = "day") -> dict:
+    return {
+        "overview": await overview(db, filters),
+        "funnel": await funnel(db, filters),
+        "time_series": [
+            await time_series(db, filters, "visitors", interval),
+            await time_series(db, filters, "page_views", interval),
+            await time_series(db, filters, "product_views", interval),
+            await time_series(db, filters, "add_to_cart", interval),
+            await time_series(db, filters, "checkout_started", interval),
+            await time_series(db, filters, "orders_completed", interval),
+            await time_series(db, filters, "revenue", interval),
+        ],
+        "breakdown": await traffic_breakdown(db, filters),
+        "pages": await traffic_pages(db, filters),
+        "buttons": await traffic_buttons(db, filters),
+        "products": await product_analytics(db, filters),
+        "recent_events": await recent_events(db, filters, limit=25),
+    }
+
+
 def event_to_read(doc: dict) -> dict:
     payload = {k: v for k, v in doc.items() if k != "_id"}
     payload["id"] = str(doc["_id"])
