@@ -3,6 +3,7 @@ from typing import Literal
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from app.analytics import routes as analytics_routes
 from app.routers import admin_admins, admin_auth, admin_cms_pages, admin_comments, admin_dashboard, admin_loyalty, admin_orders, admin_packs, admin_shipping_rates, admin_users, admin_vlog, contact, drop_countdown, loyalty, meta_catalog, packs, shipping_rates, storefront_vlog
 from app.startup import init_mongo
 from app.utils.drop_countdown_notifier import drop_countdown_monitor_loop
@@ -69,6 +70,7 @@ app.include_router(loyalty.router)
 app.include_router(packs.router)
 app.include_router(meta_catalog.router)
 app.include_router(drop_countdown.router)
+app.include_router(analytics_routes.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_admins.router)
 app.include_router(admin_cms_pages.router)

@@ -61,6 +61,16 @@ async def init_mongo():
     await db["orders"].create_index("user_id", background=True)
     await db["orders"].create_index("loyalty_points_awarded", background=True)
 
+    if "analytics_events" not in existing:
+        await db.create_collection("analytics_events")
+    await db["analytics_events"].create_index([("event_name", 1), ("created_at", -1)], background=True)
+    await db["analytics_events"].create_index([("product_id", 1), ("event_name", 1), ("created_at", -1)], background=True)
+    await db["analytics_events"].create_index([("source", 1), ("created_at", -1)], background=True)
+    await db["analytics_events"].create_index([("utm_campaign", 1), ("created_at", -1)], background=True)
+    await db["analytics_events"].create_index([("user_id", 1), ("created_at", -1)], background=True)
+    await db["analytics_events"].create_index([("anonymous_id", 1), ("created_at", -1)], background=True)
+    await db["analytics_events"].create_index([("session_id", 1), ("created_at", -1)], background=True)
+
     if "reviews" not in existing:
         await db.create_collection("reviews")
         # indexer sur product_id et user_id pour accélérer recherches et filtres

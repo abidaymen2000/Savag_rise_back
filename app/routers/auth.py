@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 from time import time
 from urllib.parse import urlencode
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jinja2 import Environment, FileSystemLoader
@@ -10,6 +10,7 @@ from jose import jwt, JWTError
 from bson import ObjectId
 from bson.errors import InvalidId
 
+from app.analytics.service import track_event
 from app.config import settings
 from app.db import get_db
 from app.crud.users import create_user, get_user_by_email, get_user_by_id, update_user_password, verify_user, mark_email_verified
@@ -69,6 +70,7 @@ def build_verify_success_redirect(token: str) -> str:
 async def signup(
     user_in: UserCreate,
     background_tasks: BackgroundTasks,
+    request: Request,
     db=Depends(get_db),
 ):
     # 0) Email unique
@@ -109,6 +111,14 @@ async def signup(
         html=html_body              # passez le HTML au handler
     )
 
+    await track_event(
+        db,
+        "account_created",
+        user_id=user_id,
+        metadata={"email_domain": user_in.email.split("@")[-1]},
+        request=request,
+    )
+
     return UserOut(
         id=user_id,
         email=created["email"],
@@ -123,6 +133,7 @@ async def signup(
     summary="Obtenir un JWT après login (email vérifié requis)"
 )
 async def login_token(
+    request: Request,
     form: OAuth2PasswordRequestForm = Depends(),
     db=Depends(get_db),
 ):
@@ -158,6 +169,13 @@ async def login_token(
     access_token = create_access_token(
         str(user["_id"]),
         timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    await track_event(
+        db,
+        "login",
+        user_id=str(user["_id"]),
+        metadata={"email_domain": user.get("email", "").split("@")[-1]},
+        request=request,
     )
     return {"access_token": access_token, "token_type": "bearer"}
 

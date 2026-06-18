@@ -1,10 +1,11 @@
 # app/routers/orders.py
 from datetime import datetime
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Path
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Path, Request
 from typing import List, Tuple
 from bson import ObjectId
 from jinja2 import Environment, FileSystemLoader
 
+from app.analytics.service import track_event
 from app.crud.variant import decrement_variant_stock, increment_variant_stock
 from app.crud.shipping_rate import resolve_shipping_rate
 from app.dependencies import get_current_user, get_current_user_optional
@@ -47,10 +48,22 @@ def parse_oid(id_str: str) -> ObjectId:
 @router.post("/quote", summary="Calculer les totaux commande sans reserver stock ni promo")
 async def api_quote_order(
     order_in: OrderCreate,
+    request: Request,
     db=Depends(get_db),
     current_user=Depends(get_current_user_optional),
 ):
     user_id = str(current_user["_id"]) if current_user else None
+    await track_event(
+        db,
+        "checkout_started",
+        user_id=user_id,
+        metadata={
+            "items_count": len(order_in.items) + len(getattr(order_in, "pack_items", []) or []),
+            "payment_method": order_in.payment_method,
+            "has_promo_code": bool(getattr(order_in, "promo_code", None)),
+        },
+        request=request,
+    )
     subtotal = sum(it.qty * it.unit_price for it in order_in.items)
     pack_calculation = await calculate_order_packs(db, getattr(order_in, "pack_items", []))
     subtotal += pack_calculation["original_subtotal"]
@@ -123,6 +136,7 @@ async def api_quote_order(
 async def api_create_order(
     order_in: OrderCreate,
     background_tasks: BackgroundTasks,
+    request: Request,
     db=Depends(get_db),
     current_user=Depends(get_current_user_optional),
 ):
@@ -249,6 +263,45 @@ async def api_create_order(
             data["promo_reserved"] = True
 
         new_order = await crud_create_order(db, data)
+        if applied_code:
+            await track_event(
+                db,
+                "coupon_applied",
+                user_id=user_id,
+                order_id=new_order["id"],
+                metadata={"coupon_code": applied_code, "discount_value": discount_value},
+                request=request,
+            )
+        if data.get("payment_method") != "cod":
+            await track_event(
+                db,
+                "payment_started",
+                user_id=user_id,
+                order_id=new_order["id"],
+                metadata={"payment_method": data.get("payment_method"), "total_amount": total_amount},
+                request=request,
+            )
+        await track_event(
+            db,
+            "order_completed",
+            user_id=user_id,
+            order_id=new_order["id"],
+            metadata={
+                "total_amount": total_amount,
+                "payment_method": data.get("payment_method"),
+                "items": [
+                    {
+                        "product_id": it["product_id"],
+                        "color": it["color"],
+                        "size": it["size"],
+                        "qty": it["qty"],
+                        "unit_price": it["unit_price"],
+                    }
+                    for it in new_order["items"]
+                ],
+            },
+            request=request,
+        )
         if loyalty_points_used > 0:
             await redeem_points_for_order(
                 db,
@@ -432,6 +485,7 @@ async def api_update_status(
     summary="Marquer la commande comme payée (COD) ou remboursée",
 )
 async def api_mark_paid(
+    request: Request,
     order_id: str = Path(..., description="ID de la commande"),
     db=Depends(get_db),
     _admin=Depends(require_permission("orders")),
@@ -439,6 +493,13 @@ async def api_mark_paid(
     oid = parse_oid(order_id)
     await mark_paid(db, oid)
     earned_points = await award_points_for_paid_order(db, oid)
+    await track_event(
+        db,
+        "payment_success",
+        order_id=order_id,
+        metadata={"loyalty_points_earned": earned_points},
+        request=request,
+    )
     # IMPORTANT: NE PLUS incrémenter ici — l'usage a déjà été "réservé" à la création
     return {"message": "Paiement enregistre", "loyalty_points_earned": earned_points}
 

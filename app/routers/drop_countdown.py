@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from bson import ObjectId
 
+from app.analytics.service import track_event
 from app.db import get_db
 from app.dependencies import get_current_user
 from app.dependencies_admin import require_permission
@@ -104,6 +105,7 @@ async def read_drop_notification_status(
 
 @router.post("/storefront/drop-countdown/notify-me", response_model=DropNotificationStatus, status_code=201)
 async def subscribe_drop_notification(
+    request: Request,
     current_user=Depends(get_current_user),
     db=Depends(get_db),
 ):
@@ -131,6 +133,17 @@ async def subscribe_drop_notification(
             },
         },
         upsert=True,
+    )
+    await track_event(
+        db,
+        "notify_me_clicked",
+        user_id=str(current_user["_id"]),
+        metadata={
+            "drop_key": drop_key,
+            "drop_name": doc["value"].get("drop_name"),
+            "drop_date": doc["value"].get("launch_at").isoformat() if doc["value"].get("launch_at") else None,
+        },
+        request=request,
     )
     return DropNotificationStatus(
         drop_key=drop_key,

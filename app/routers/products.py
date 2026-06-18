@@ -3,13 +3,15 @@ from uuid import uuid4
 from bson import ObjectId
 from fastapi import (
     APIRouter, Depends, HTTPException, Query,
-    status, Response
+    status, Response, Request
 )
 from typing import Any, Dict, List, Optional
 
 from pymongo import ASCENDING, DESCENDING
 
 from app.crud.product import get_product
+from app.analytics.service import track_event
+from app.dependencies import get_current_user_optional
 from app.dependencies_admin import require_permission
 
 from ..db import get_db
@@ -92,6 +94,7 @@ async def list_products(skip: int = 0, limit: int = 10, db=Depends(get_db)):
     summary="Recherche plein-texte + filtres + tri + pagination"
 )
 async def search_products_endpoint(
+    request: Request,
     text: Optional[str] = Query(None, description="Terme plein-texte"),
     min_price: Optional[float] = Query(None, ge=0),
     max_price: Optional[float] = Query(None, ge=0),
@@ -105,7 +108,16 @@ async def search_products_endpoint(
         regex="^(price|full_name):(asc|desc)$"
     ),
     db=Depends(get_db),
+    current_user=Depends(get_current_user_optional),
 ):
+    if text:
+        await track_event(
+            db,
+            "search_submitted",
+            user_id=str(current_user["_id"]) if current_user else None,
+            metadata={"query": text, "filters": {"gender": gender, "color": color, "size": size}},
+            request=request,
+        )
     # Création du pipeline d'agrégation
     pipeline = []
     filt: dict = {}
@@ -201,7 +213,9 @@ async def delete_product(
 )
 async def get_product_endpoint(
     product_id: str,
-    db=Depends(get_db)
+    request: Request,
+    db=Depends(get_db),
+    current_user=Depends(get_current_user_optional),
 ):
     # 1) Valide l'ID
     try:
@@ -219,6 +233,18 @@ async def get_product_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Produit non trouvé"
         )
+
+    await track_event(
+        db,
+        "product_viewed",
+        user_id=str(current_user["_id"]) if current_user else None,
+        product_id=product_id,
+        metadata={
+            "product_name": prod.get("full_name") or prod.get("name"),
+            "style_id": prod.get("style_id"),
+        },
+        request=request,
+    )
 
     # 3) Remappe _id → id et construit le payload
     payload: Dict[str, Any] = {k: v for k, v in prod.items() if k != "_id"}

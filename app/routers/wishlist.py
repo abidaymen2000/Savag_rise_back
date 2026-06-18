@@ -1,6 +1,7 @@
 # app/routers/wishlist.py
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from typing import List
+from app.analytics.service import track_event
 from app.schemas.wishlist import WishlistCreate, WishlistOut
 from app.crud.wishlist import add_to_wishlist, remove_from_wishlist, list_wishlist
 from app.dependencies import get_db, get_current_user  # dépendance pour récupérer user
@@ -10,12 +11,20 @@ router = APIRouter(prefix="/profile/wishlist", tags=["Wishlist"])
 @router.post("/", response_model=WishlistOut, status_code=201)
 async def add_wish(
     payload: WishlistCreate,
+    request: Request,
     db=Depends(get_db),
     current_user=Depends(get_current_user)
 ):
     user_id = str(current_user["_id"])
     # optionnel : vérifier que le produit existe
     doc = await add_to_wishlist(db, user_id, payload.product_id)
+    await track_event(
+        db,
+        "wishlist_added",
+        user_id=user_id,
+        product_id=payload.product_id,
+        request=request,
+    )
     return WishlistOut(
         id=str(doc["_id"]),
         user_id=str(doc["user_id"]),
