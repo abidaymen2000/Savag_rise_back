@@ -35,11 +35,19 @@ async def add_wish(
 @router.delete("/{product_id}", status_code=204)
 async def remove_wish(
     product_id: str,
+    request: Request,
     db=Depends(get_db),
     current_user=Depends(get_current_user)
 ):
     user_id = str(current_user["_id"])
     await remove_from_wishlist(db, user_id, product_id)
+    await track_event(
+        db,
+        "wishlist_removed",
+        user_id=user_id,
+        product_id=product_id,
+        request=request,
+    )
 
 @router.get("/", response_model=List[WishlistOut])
 async def get_wishlist(

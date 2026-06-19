@@ -642,4 +642,17 @@ async def api_cancel_order(
         html=html_admin
     )
 
+    await track_event(
+        db,
+        "order_cancelled",
+        user_id=str(current_user["_id"]),
+        order_id=order_id,
+        metadata={
+            "total_amount": updated.get("total_amount"),
+            "items_count": len(updated.get("items", [])),
+            "promo_code": updated.get("promo_code"),
+        },
+        request=None,
+    )
+
     return updated

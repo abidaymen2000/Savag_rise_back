@@ -1,6 +1,34 @@
 # Savage Rise analytics frontend examples
 
 Use the public endpoint `POST /analytics/events` for client-side actions that only the browser can see.
+Use `GET /analytics/events/catalog` to retrieve the full event contract used by the CMS.
+
+Core fields accepted by `POST /analytics/events`:
+
+```json
+{
+  "event_name": "button_clicked",
+  "anonymous_id": "browser-stable-id",
+  "session_id": "tab-session-id",
+  "product_id": "optional-product-id",
+  "order_id": "optional-order-id",
+  "page_path": "/products/sr-tee",
+  "page_title": "SR Tee",
+  "action_target": "product-add-to-cart",
+  "source": "instagram",
+  "utm_source": "instagram",
+  "utm_medium": "paid_social",
+  "utm_campaign": "drop-01",
+  "metadata": {}
+}
+```
+
+The backend normalizes these fields for CMS filters:
+
+```txt
+event_category, page_path, page_title, action_target, device_type,
+source, utm_source, utm_medium, utm_campaign, has_account
+```
 
 ```js
 srTrack("product_viewed", {
@@ -83,7 +111,12 @@ async function srTrack(eventName, metadata = {}) {
         session_id: sessionId,
         product_id: metadata.product_id,
         order_id: metadata.order_id,
+        page_path: metadata.page_path || window.location.pathname,
+        page_title: metadata.page_title || document.title,
+        action_target: metadata.action_target || metadata.button_id || metadata.link_id || metadata.form_id,
         source: metadata.source,
+        utm_source: metadata.utm_source,
+        utm_medium: metadata.utm_medium,
         utm_campaign: metadata.utm_campaign,
         metadata
       })
@@ -92,4 +125,50 @@ async function srTrack(eventName, metadata = {}) {
     // Analytics must never block the shopping experience.
   }
 }
+```
+
+Recommended storefront events:
+
+```txt
+page_viewed
+collection_viewed
+search_submitted
+filter_applied
+sort_changed
+product_viewed
+product_image_viewed
+variant_selected
+size_selected
+color_selected
+size_guide_opened
+add_to_cart
+remove_from_cart
+cart_viewed
+cart_updated
+checkout_started
+shipping_info_submitted
+payment_started
+payment_failed
+button_clicked
+link_clicked
+form_started
+form_submitted
+form_error
+```
+
+Backend-tracked critical events:
+
+```txt
+account_created
+email_verified
+login
+wishlist_added
+wishlist_removed
+review_created
+contact_submitted
+vlog_episode_viewed
+coupon_applied
+payment_success
+order_completed
+order_cancelled
 ```

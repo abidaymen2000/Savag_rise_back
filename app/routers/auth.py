@@ -180,7 +180,7 @@ async def login_token(
 
 
 @router.get("/verify-email", summary="Verifier un email")
-async def verify_email(token: str = Query(...), db=Depends(get_db)):
+async def verify_email(request: Request, token: str = Query(...), db=Depends(get_db)):
     # 1) DÃ©codage du token reÃ§u par email
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
@@ -197,6 +197,12 @@ async def verify_email(token: str = Query(...), db=Depends(get_db)):
 
     # 2) Marquer l'email comme vÃ©rifiÃ©
     await mark_email_verified(db, user_id)
+    await track_event(
+        db,
+        "email_verified",
+        user_id=user_id,
+        request=request,
+    )
 
     # 3) Redirect to a Savage Rise frontend page without exposing a token in the URL.
     return RedirectResponse(build_verify_success_redirect(), status_code=302)

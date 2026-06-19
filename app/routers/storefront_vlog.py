@@ -1,7 +1,8 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
+from app.analytics.service import track_event
 from app.db import get_db
 from app.dependencies import get_current_user, get_current_user_optional
 from app.schemas.vlog import (
@@ -96,12 +97,28 @@ async def read_storefront_vlog_chapter(
 
 
 @router.post("/episodes/{episode_id}/view", response_model=VlogEpisodeViewOut)
-async def track_vlog_episode_view(episode_id: str, db=Depends(get_db)):
+async def track_vlog_episode_view(
+    episode_id: str,
+    request: Request,
+    db=Depends(get_db),
+    current_user=Depends(get_current_user_optional),
+):
     episode = await _public_episode_or_404(db, episode_id)
     res = await db[EPISODES_COLLECTION].find_one_and_update(
         {"_id": episode["_id"]},
         {"$inc": {"view_count": 1}, "$set": {"updated_at": now_utc()}},
         return_document=True,
+    )
+    await track_event(
+        db,
+        "vlog_episode_viewed",
+        user_id=str(current_user["_id"]) if current_user else None,
+        metadata={
+            "episode_id": str(episode["_id"]),
+            "chapter_id": str(episode.get("chapter_id")) if episode.get("chapter_id") else None,
+            "title": episode.get("title"),
+        },
+        request=request,
     )
     return VlogEpisodeViewOut(
         episode_id=str(episode["_id"]),

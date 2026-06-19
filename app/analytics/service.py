@@ -6,6 +6,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import DESCENDING
 
+from app.analytics.events import EVENT_CATALOG
 from app.analytics.models import ANALYTICS_EVENTS_COLLECTION
 from app.analytics.utils import (
     derive_source,
@@ -24,6 +25,25 @@ def _clean_optional(value: Any) -> Optional[str]:
     return text or None
 
 
+def _metadata_value(metadata: Dict[str, Any], *keys: str) -> Optional[str]:
+    for key in keys:
+        value = _clean_optional(metadata.get(key))
+        if value:
+            return value
+    return None
+
+
+def _device_from_user_agent(user_agent: Optional[str]) -> str:
+    value = (user_agent or "").lower()
+    if "ipad" in value or "tablet" in value:
+        return "tablet"
+    if "mobile" in value or "iphone" in value or "android" in value:
+        return "mobile"
+    if value:
+        return "desktop"
+    return "unknown"
+
+
 def _date_filter(date_from: Optional[datetime], date_to: Optional[datetime]) -> dict:
     created_at = {}
     if date_from:
@@ -40,6 +60,8 @@ def build_filters(
     product_id: Optional[str] = None,
     source: Optional[str] = None,
     utm_campaign: Optional[str] = None,
+    event_category: Optional[str] = None,
+    device_type: Optional[str] = None,
 ) -> dict:
     filters = _date_filter(date_from, date_to)
     if event_name:
@@ -50,6 +72,10 @@ def build_filters(
         filters["source"] = source.lower()
     if utm_campaign:
         filters["utm_campaign"] = utm_campaign
+    if event_category:
+        filters["event_category"] = event_category
+    if device_type:
+        filters["device_type"] = device_type
     return filters
 
 
@@ -72,7 +98,22 @@ async def track_event(
         request_data = request_metadata(request)
         metadata = metadata or {}
         source = (_clean_optional(metadata.get("source")) or derive_source(metadata, request_data["referrer"])).lower()
+        utm_source = _metadata_value(metadata, "utm_source", "source")
+        utm_medium = _metadata_value(metadata, "utm_medium")
         utm_campaign = _clean_optional(metadata.get("utm_campaign")) or extract_utm_campaign(metadata)
+        page_path = _metadata_value(metadata, "page_path", "path")
+        page_title = _metadata_value(metadata, "page_title", "title")
+        action_target = _metadata_value(
+            metadata,
+            "action_target",
+            "button_id",
+            "link_id",
+            "form_id",
+            "cta_id",
+            "label",
+        )
+        event_category = EVENT_CATALOG.get(event_name, {}).get("category")
+        user_agent = request_data["user_agent"]
         doc = {
             "event_name": event_name,
             "user_id": _clean_optional(user_id),
@@ -80,11 +121,18 @@ async def track_event(
             "session_id": _clean_optional(session_id),
             "product_id": _clean_optional(product_id),
             "order_id": _clean_optional(order_id),
+            "event_category": event_category,
+            "page_path": page_path,
+            "page_title": page_title,
+            "action_target": action_target,
+            "device_type": _device_from_user_agent(user_agent),
             "metadata": metadata,
             "ip_address": request_data["ip_address"],
-            "user_agent": request_data["user_agent"],
+            "user_agent": user_agent,
             "referrer": request_data["referrer"],
             "source": source or "direct",
+            "utm_source": utm_source,
+            "utm_medium": utm_medium,
             "utm_campaign": utm_campaign,
             "has_account": bool(user_id),
             "created_at": datetime.utcnow(),
@@ -303,27 +351,8 @@ async def time_series(db, filters: dict, metric: str, interval: str = "day") -> 
     }
 
 
-def _device_from_user_agent(user_agent: Optional[str]) -> str:
-    value = (user_agent or "").lower()
-    if "ipad" in value or "tablet" in value:
-        return "tablet"
-    if "mobile" in value or "iphone" in value or "android" in value:
-        return "mobile"
-    if value:
-        return "desktop"
-    return "unknown"
-
-
 async def device_counts(db, filters: dict) -> list[dict]:
-    docs = await db[ANALYTICS_EVENTS_COLLECTION].find(filters, {"user_agent": 1}).to_list(length=10000)
-    counts: dict[str, int] = {}
-    for doc in docs:
-        device = _device_from_user_agent(doc.get("user_agent"))
-        counts[device] = counts.get(device, 0) + 1
-    return [
-        {"label": label, "count": count}
-        for label, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)
-    ]
+    return await grouped_counts(db, filters, "device_type")
 
 
 async def account_status_counts(db, filters: dict) -> list[dict]:
@@ -342,6 +371,7 @@ async def traffic_breakdown(db, filters: dict) -> dict:
         "campaigns": sources["campaigns"],
         "devices": await device_counts(db, filters),
         "account_status": await account_status_counts(db, filters),
+        "categories": await grouped_counts(db, filters, "event_category", limit=50),
         "events": await grouped_counts(db, filters, "event_name", limit=50),
     }
 
@@ -379,29 +409,44 @@ async def top_metadata_values(
 
 
 async def traffic_pages(db, filters: dict, limit: int = 20) -> dict:
-    return {
-        "pages": await top_metadata_values(
-            db,
-            filters,
-            "page_viewed",
-            metadata_field="page_path",
-            fallback_field="url",
-            limit=limit,
-        )
-    }
+    pipeline = [
+        {"$match": {**filters, "event_name": "page_viewed"}},
+        {
+            "$project": {
+                "label": {"$ifNull": ["$page_path", {"$ifNull": ["$metadata.page_path", "$metadata.url"]}]},
+                "value": "$metadata.total_amount",
+            }
+        },
+        {"$match": {"label": {"$nin": [None, ""]}}},
+        {"$group": {"_id": "$label", "count": {"$sum": 1}, "value": {"$sum": {"$ifNull": ["$value", 0]}}}},
+        {"$sort": {"count": -1}},
+        {"$limit": limit},
+    ]
+    rows = await db[ANALYTICS_EVENTS_COLLECTION].aggregate(pipeline).to_list(length=limit)
+    return {"pages": [{"label": row["_id"], "count": int(row["count"]), "value": row.get("value")} for row in rows]}
 
 
 async def traffic_buttons(db, filters: dict, limit: int = 20) -> dict:
-    return {
-        "buttons": await top_metadata_values(
-            db,
-            filters,
-            "button_clicked",
-            metadata_field="button_id",
-            fallback_field="label",
-            limit=limit,
-        )
-    }
+    pipeline = [
+        {"$match": {**filters, "event_name": {"$in": ["button_clicked", "link_clicked"]}}},
+        {
+            "$project": {
+                "label": {
+                    "$ifNull": [
+                        "$action_target",
+                        {"$ifNull": ["$metadata.button_id", {"$ifNull": ["$metadata.link_id", "$metadata.label"]}]},
+                    ]
+                },
+                "value": "$metadata.total_amount",
+            }
+        },
+        {"$match": {"label": {"$nin": [None, ""]}}},
+        {"$group": {"_id": "$label", "count": {"$sum": 1}, "value": {"$sum": {"$ifNull": ["$value", 0]}}}},
+        {"$sort": {"count": -1}},
+        {"$limit": limit},
+    ]
+    rows = await db[ANALYTICS_EVENTS_COLLECTION].aggregate(pipeline).to_list(length=limit)
+    return {"buttons": [{"label": row["_id"], "count": int(row["count"]), "value": row.get("value")} for row in rows]}
 
 
 async def traffic_dashboard(db, filters: dict, interval: str = "day") -> dict:

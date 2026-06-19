@@ -4,7 +4,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Request
 
 from app.analytics import service
+from app.analytics.events import event_catalog
 from app.analytics.schemas import (
+    AnalyticsEventDefinition,
     AnalyticsEventPageResponse,
     AnalyticsEventCreate,
     AnalyticsEventRead,
@@ -51,8 +53,18 @@ async def create_analytics_event(
     metadata = dict(payload.metadata or {})
     if payload.source and "source" not in metadata:
         metadata["source"] = payload.source
+    if payload.utm_source and "utm_source" not in metadata:
+        metadata["utm_source"] = payload.utm_source
+    if payload.utm_medium and "utm_medium" not in metadata:
+        metadata["utm_medium"] = payload.utm_medium
     if payload.utm_campaign and "utm_campaign" not in metadata:
         metadata["utm_campaign"] = payload.utm_campaign
+    if payload.page_path and "page_path" not in metadata:
+        metadata["page_path"] = payload.page_path
+    if payload.page_title and "page_title" not in metadata:
+        metadata["page_title"] = payload.page_title
+    if payload.action_target and "action_target" not in metadata:
+        metadata["action_target"] = payload.action_target
 
     tracked = await service.track_event(
         db,
@@ -72,6 +84,11 @@ async def create_analytics_event(
     }
 
 
+@router.get("/analytics/events/catalog", response_model=list[AnalyticsEventDefinition])
+async def analytics_event_catalog():
+    return event_catalog()
+
+
 def _filters(
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
@@ -79,8 +96,26 @@ def _filters(
     product_id: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     utm_campaign: Optional[str] = Query(None),
+    event_category: Optional[str] = Query(None),
+    device_type: Optional[str] = Query(None),
 ) -> dict:
-    return service.build_filters(date_from, date_to, event_name, product_id, source, utm_campaign)
+    return service.build_filters(
+        date_from,
+        date_to,
+        event_name,
+        product_id,
+        source,
+        utm_campaign,
+        event_category,
+        device_type,
+    )
+
+
+@router.get("/admin/analytics/events/catalog", response_model=list[AnalyticsEventDefinition])
+async def admin_analytics_event_catalog(
+    _admin=Depends(require_permission("analytics")),
+):
+    return event_catalog()
 
 
 @router.get("/admin/analytics/overview", response_model=AnalyticsOverviewResponse)

@@ -4,31 +4,7 @@ from urllib.parse import urlparse
 
 from fastapi import Request
 
-
-ALLOWED_ANALYTICS_EVENTS = {
-    "page_viewed",
-    "product_viewed",
-    "collection_viewed",
-    "search_submitted",
-    "notify_me_clicked",
-    "account_created",
-    "login",
-    "logout",
-    "add_to_cart",
-    "remove_from_cart",
-    "cart_viewed",
-    "checkout_started",
-    "shipping_info_submitted",
-    "payment_started",
-    "payment_success",
-    "payment_failed",
-    "order_completed",
-    "coupon_applied",
-    "size_selected",
-    "color_selected",
-    "wishlist_added",
-    "button_clicked",
-}
+from app.analytics.events import ALLOWED_ANALYTICS_EVENTS
 
 SOCIAL_SOURCES = {
     "instagram": ("instagram.", "l.instagram.com"),
@@ -99,4 +75,3 @@ def rate_limit_allows(key: Optional[str]) -> bool:
     hits.append(now)
     _rate_limit_hits[key] = hits
     return True
-

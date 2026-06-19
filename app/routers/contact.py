@@ -1,6 +1,8 @@
-from fastapi import APIRouter, BackgroundTasks, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.responses import JSONResponse
 from jinja2 import Environment, FileSystemLoader, pass_eval_context
+from app.analytics.service import track_event
+from app.db import get_db
 from app.schemas.contact import ContactMessage
 from app.utils.email import send_email
 from app.config import settings
@@ -32,7 +34,9 @@ jinja_env.filters["nl2br"] = nl2br
 )
 async def submit_contact(
     payload: ContactMessage,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db=Depends(get_db),
 ):
     # 1) Charge le template HTML
     template = jinja_env.get_template("contact_email.html")
@@ -59,6 +63,12 @@ async def submit_contact(
         recipient=settings.ADMIN_EMAIL,
         body=text_body,
         html=html_body
+    )
+    await track_event(
+        db,
+        "contact_submitted",
+        metadata={"subject": payload.subject, "email_domain": payload.email.split("@")[-1]},
+        request=request,
     )
 
     # 4) Réponse JSON au client

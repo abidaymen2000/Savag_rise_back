@@ -1,7 +1,7 @@
 # app/routers/reviews.py
 import datetime
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Depends, Query, status
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, status
 from typing import List, Optional
 
 from app.schemas.review import ReviewCreate, ReviewOut, ReviewUpdate, ReviewStats
@@ -9,6 +9,7 @@ from app.crud.review import (
     create_review, get_review, list_user_reviews, update_review, delete_review,
     list_reviews, get_review_stats
 )
+from app.analytics.service import track_event
 from app.dependencies import get_current_user, get_db  # votre dépendance Mongo
 
 router = APIRouter(
@@ -43,6 +44,7 @@ async def _attach_author(db, doc: dict) -> dict:
 async def add_review(
     product_id: str,
     payload: ReviewCreate,
+    request: Request,
     db=Depends(get_db),
     current_user=Depends(get_current_user)
 ):
@@ -51,6 +53,14 @@ async def add_review(
     # Injecte l’ID de l’utilisateur authentifié
     data["user_id"] = str(current_user.get("_id"))
     doc = await create_review(db, product_id, data)
+    await track_event(
+        db,
+        "review_created",
+        user_id=str(current_user.get("_id")),
+        product_id=product_id,
+        metadata={"rating": getattr(payload, "rating", None)},
+        request=request,
+    )
     doc = await _attach_author(db, doc)
     return ReviewOut(**doc)
 
