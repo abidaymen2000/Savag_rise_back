@@ -49,7 +49,7 @@ def build_frontend_url(path: str) -> str:
 
 
 def build_email_verification_link(token: str) -> str:
-    return build_url(str(settings.BACKEND_URL), "/auth/verify-email", {"token": token})
+    return build_url(str(settings.FRONTEND_URL), "/verify-email", {"token": token})
 
 
 def build_verify_success_redirect() -> str:
@@ -95,16 +95,16 @@ async def signup(
     # 4) Fallback texte brut (optionnel)
     text_body = (
         f"Bonjour {user_in.email},\n\n"
-        "Merci pour votre inscription ! Cliquez sur ce lien pour vÃ©rifier votre adresse email :\n\n"
+        "Merci pour votre inscription ! Cliquez sur ce lien pour verifier votre adresse email :\n\n"
         f"{verify_link}\n\n"
         "Ce lien expire dans 1 heure.\n\n"
-        "L'Ã©quipe Savage Rise"
+        "L'equipe Savage Rise"
     )
 
     # 5) Envoi en background (assurez-vous que send_email peut prendre html_body)
     background_tasks.add_task(
         send_email,
-        subject="Bienvenue chez Savage Rise â€“ VÃ©rifiez votre email",
+        subject="Bienvenue chez Savage Rise - Verifiez votre email",
         recipient=user_in.email,
         body=text_body,
         html=html_body              # passez le HTML au handler
@@ -220,14 +220,14 @@ async def forgot_password(
             reset_link=reset_link,
             logo_url=settings.LOGO_URL
         )
-        subject = "Savage Rise â€“ RÃ©initialisation de votre mot de passe"
+        subject = "Savage Rise - Reinitialisation de votre mot de passe"
         body = (
             f"Bonjour,\n\n"
-            "Vous avez demandÃ© la rÃ©initialisation de votre mot de passe.\n"
+            "Vous avez demande la reinitialisation de votre mot de passe.\n"
             f"Cliquez sur ce lien pour en choisir un nouveau (valable 1 heure) :\n\n"
             f"{reset_link}\n\n"
-            "Si vous n'Ãªtes pas Ã  l'origine de cette demande, ignorez cet email.\n\n"
-            "â€” L'Ã©quipe Savage Rise"
+            "Si vous n'etes pas a l'origine de cette demande, ignorez cet email.\n\n"
+            "- L'equipe Savage Rise"
         )
         background_tasks.add_task(
             send_email,
@@ -306,16 +306,16 @@ async def resend_verification(
     )
     text_body = (
         f"Bonjour {email},\n\n"
-        "Voici un nouveau lien pour vÃ©rifier votre adresse email :\n\n"
+        "Voici un nouveau lien pour verifier votre adresse email :\n\n"
         f"{verify_link}\n\n"
         "Ce lien expire dans 1 heure.\n\n"
-        "L'Ã©quipe Savage Rise"
+        "L'equipe Savage Rise"
     )
 
     # 6) Envoi en background
     background_tasks.add_task(
         send_email,
-        subject="Savage Rise â€“ Renvoi : vÃ©rifiez votre email",
+        subject="Savage Rise - Renvoi : verifiez votre email",
         recipient=email,
         body=text_body,
         html=html_body
