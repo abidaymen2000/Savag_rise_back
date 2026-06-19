@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from app.analytics import routes as analytics_routes
+from app.config import settings
 from app.routers import admin_admins, admin_auth, admin_cms_pages, admin_comments, admin_dashboard, admin_loyalty, admin_orders, admin_packs, admin_shipping_rates, admin_users, admin_vlog, contact, drop_countdown, loyalty, meta_catalog, packs, shipping_rates, storefront_vlog
 from app.startup import init_mongo
 from app.utils.drop_countdown_notifier import drop_countdown_monitor_loop
@@ -13,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Savage Rise E‑commerce API",  servers = [
     {"url": "http://localhost:8000"},
-    {"url": "https://savage-rise-backend-8f0f0a23c13f.herokuapp.com"},
+    {"url": str(settings.BACKEND_URL).rstrip("/")},
 ])
 
 app.add_middleware(
