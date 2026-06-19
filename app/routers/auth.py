@@ -52,8 +52,16 @@ def build_email_verification_link(token: str) -> str:
     return build_url(str(settings.FRONTEND_URL), "/verify-email", {"token": token})
 
 
-def build_verify_success_redirect() -> str:
-    return build_frontend_url("/email-confirmed")
+def build_verify_success_redirect(access_token: str) -> str:
+    return build_url(
+        str(settings.FRONTEND_URL),
+        "/verify-success",
+        {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "verified": "true",
+        },
+    )
 
 
 def build_verify_failure_redirect() -> str:
@@ -204,8 +212,13 @@ async def verify_email(request: Request, token: str = Query(...), db=Depends(get
         request=request,
     )
 
-    # 3) Redirect to a Savage Rise frontend page without exposing a token in the URL.
-    return RedirectResponse(build_verify_success_redirect(), status_code=302)
+    access_token = create_access_token(
+        user_id,
+        timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    # 3) Redirect to the frontend page that stores the token and refreshes the user.
+    return RedirectResponse(build_verify_success_redirect(access_token), status_code=302)
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED,
              summary="Demande de reset de mot de passe")
