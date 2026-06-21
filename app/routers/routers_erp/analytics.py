@@ -27,6 +27,28 @@ from app.dependencies_admin import require_permission
 router = APIRouter(tags=["analytics"])
 
 
+def _filters(
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    event_name: Optional[str] = Query(None),
+    product_id: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    utm_campaign: Optional[str] = Query(None),
+    event_category: Optional[str] = Query(None),
+    device_type: Optional[str] = Query(None),
+):
+    return service.build_filters(
+        date_from=date_from,
+        date_to=date_to,
+        event_name=event_name,
+        product_id=product_id,
+        source=source,
+        utm_campaign=utm_campaign,
+        event_category=event_category,
+        device_type=device_type,
+    )
+
+
 @router.get("/admin/analytics/events/catalog", response_model=list[AnalyticsEventDefinition])
 async def admin_analytics_event_catalog(
     _admin=Depends(require_permission("analytics")),
