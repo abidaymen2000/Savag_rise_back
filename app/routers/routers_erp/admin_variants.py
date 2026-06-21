@@ -3,7 +3,13 @@ from fastapi import APIRouter, Depends, File, UploadFile, status
 from app.db import get_db
 from app.dependencies_admin import require_permission
 from app.schemas.image import ImageOut
-from app.schemas.variant import VariantCreate, VariantOut
+from app.schemas.variant import (
+    VariantColorUpdate,
+    VariantCreate,
+    VariantInventoryOut,
+    VariantOut,
+    VariantSizeCreate,
+)
 from app.services.services_erp import admin_variant_service
 
 
@@ -18,6 +24,33 @@ async def create_variant(
     _admin=Depends(require_permission("products")),
 ):
     return await admin_variant_service.create_variant(db, product_id, variant)
+
+
+@router.patch("/{color}", response_model=VariantInventoryOut, summary="Renommer la couleur d'une variante")
+async def rename_variant_color(
+    product_id: str,
+    color: str,
+    payload: VariantColorUpdate,
+    db=Depends(get_db),
+    admin=Depends(require_permission("products")),
+):
+    return await admin_variant_service.rename_color(db, product_id, color, payload, admin)
+
+
+@router.post(
+    "/{color}/sizes",
+    response_model=VariantInventoryOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ajouter une taille a une couleur existante",
+)
+async def add_variant_size(
+    product_id: str,
+    color: str,
+    payload: VariantSizeCreate,
+    db=Depends(get_db),
+    admin=Depends(require_permission("products")),
+):
+    return await admin_variant_service.add_size(db, product_id, color, payload, admin)
 
 
 @router.patch("/{color}/sizes/{size}/stock", status_code=status.HTTP_204_NO_CONTENT, summary="Met a jour le stock d'une taille pour une couleur")

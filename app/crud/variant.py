@@ -14,6 +14,14 @@ async def add_variant(db, product_id: str, variant: Dict[str, Any]) -> Dict[str,
     )
     return variant
 
+
+async def find_variants(db, product_id: str):
+    product = await db["products"].find_one(
+        {"_id": ObjectId(product_id)},
+        {"variants": 1},
+    )
+    return None if not product else product.get("variants", [])
+
 # 2) Récupère toutes les variantes d'un produit
 async def get_variants(db, product_id: str) -> List[Dict[str, Any]]:
     pid = ObjectId(product_id)
@@ -24,6 +32,34 @@ async def get_variants(db, product_id: str) -> List[Dict[str, Any]]:
     if not prod:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Produit non trouvé")
     return prod.get("variants", [])
+
+
+async def rename_variant_color(
+    db, product_id: str, current_color: str, new_color: str
+) -> int:
+    result = await db["products"].update_one(
+        {"_id": ObjectId(product_id), "variants.color": current_color},
+        {"$set": {"variants.$.color": new_color}},
+    )
+    return result.modified_count
+
+
+async def add_size_to_variant(
+    db, product_id: str, color: str, size_data: Dict[str, Any]
+) -> int:
+    result = await db["products"].update_one(
+        {
+            "_id": ObjectId(product_id),
+            "variants": {
+                "$elemMatch": {
+                    "color": color,
+                    "sizes": {"$not": {"$elemMatch": {"size": size_data["size"]}}},
+                }
+            },
+        },
+        {"$push": {"variants.$.sizes": size_data}},
+    )
+    return result.modified_count
 
 # 3) Met à jour le stock d'une taille d'une couleur
 async def update_variant_stock(

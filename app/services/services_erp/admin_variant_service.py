@@ -2,6 +2,8 @@ from bson import ObjectId
 from fastapi import HTTPException, UploadFile, status
 
 from app.crud import variant as variant_crud
+from app.schemas.variant import VariantInventoryOut
+from app.services.services_erp.audit_service import log_action
 from app.services.services_cms.imagekit_upload import upload_to_imagekit
 
 
@@ -15,6 +17,82 @@ def parse_oid(product_id: str) -> str:
 
 async def create_variant(db, product_id: str, variant):
     return await variant_crud.add_variant(db, parse_oid(product_id), variant.model_dump())
+
+
+def _find_variant(variants, color: str):
+    normalized_color = color.strip().casefold()
+    return next(
+        (variant for variant in variants if str(variant.get("color", "")).strip().casefold() == normalized_color),
+        None,
+    )
+
+
+async def rename_color(db, product_id: str, current_color: str, payload, admin):
+    product_id = parse_oid(product_id)
+    new_color = payload.color.strip()
+    if not new_color:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="La couleur est obligatoire")
+    variants = await variant_crud.find_variants(db, product_id)
+    if variants is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Produit introuvable")
+    current_variant = _find_variant(variants, current_color)
+    if not current_variant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Couleur introuvable")
+
+    current_stored_color = current_variant["color"]
+    duplicate = _find_variant(variants, new_color)
+    if duplicate and duplicate is not current_variant:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cette couleur existe deja pour ce produit")
+
+    if current_stored_color != new_color:
+        modified = await variant_crud.rename_variant_color(db, product_id, current_stored_color, new_color)
+        if not modified:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La couleur n'a pas pu etre renommee")
+
+    result = {**current_variant, "color": new_color}
+    await log_action(
+        db,
+        admin=admin,
+        action="variant.color.rename",
+        module="inventory",
+        entity_type="product",
+        entity_id=product_id,
+        metadata={"from": current_stored_color, "to": new_color},
+    )
+    return VariantInventoryOut(**result)
+
+
+async def add_size(db, product_id: str, color: str, payload, admin):
+    product_id = parse_oid(product_id)
+    size = payload.size.strip()
+    if not size:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="La taille est obligatoire")
+    variants = await variant_crud.find_variants(db, product_id)
+    if variants is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Produit introuvable")
+    variant = _find_variant(variants, color)
+    if not variant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Couleur introuvable")
+
+    if any(str(item.get("size", "")).strip().casefold() == size.casefold() for item in variant.get("sizes", [])):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cette taille existe deja pour cette couleur")
+
+    size_data = {"size": size, "stock": payload.stock}
+    modified = await variant_crud.add_size_to_variant(db, product_id, variant["color"], size_data)
+    if not modified:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La taille n'a pas pu etre ajoutee")
+
+    result = {**variant, "sizes": [*variant.get("sizes", []), size_data]}
+    await log_action(
+        db,
+        admin=admin,
+        action="variant.size.add",
+        module="inventory",
+        entity_type="product",
+        entity_id=product_id,
+        metadata={"color": variant["color"], "size": size, "stock": payload.stock},
+    )
+    return VariantInventoryOut(**result)
 
 
 async def update_stock(db, product_id: str, color: str, size: str, new_stock: int):

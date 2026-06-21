@@ -1,5 +1,5 @@
 # app/schemas/variant.py
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
 
 from app.schemas.image import ImageOut
@@ -20,3 +20,17 @@ class VariantOut(VariantCreate):
 
     class Config:
         orm_mode = True
+
+
+class VariantColorUpdate(BaseModel):
+    color: str = Field(..., min_length=1, max_length=100)
+
+
+class VariantSizeCreate(BaseModel):
+    size: str = Field(..., min_length=1, max_length=50)
+    stock: int = Field(0, ge=0)
+
+
+class VariantInventoryOut(BaseModel):
+    color: str
+    sizes: List[SizeStock]
