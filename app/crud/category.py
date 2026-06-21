@@ -8,6 +8,21 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 async def list_categories(db: AsyncIOMotorDatabase) -> List[dict]:
     return await db["categories"].find().to_list(length=100)
 
+
+async def count_categories(db: AsyncIOMotorDatabase, filters: dict) -> int:
+    return await db["categories"].count_documents(filters)
+
+
+async def list_categories_page(db: AsyncIOMotorDatabase, filters: dict, skip: int, limit: int) -> List[dict]:
+    return await (
+        db["categories"]
+        .find(filters)
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(limit)
+        .to_list(length=limit)
+    )
+
 async def get_category(db: AsyncIOMotorDatabase, category_id: str) -> dict:
     return await db["categories"].find_one({"_id": ObjectId(category_id)})
 
@@ -28,3 +43,13 @@ async def update_category(db: AsyncIOMotorDatabase, category_id: str, data: dict
 
 async def delete_category(db: AsyncIOMotorDatabase, category_id: str) -> None:
     await db["categories"].delete_one({"_id": ObjectId(category_id)})
+
+
+async def list_products_by_category(db: AsyncIOMotorDatabase, category_name: str, skip: int, limit: int) -> List[dict]:
+    return await (
+        db["products"]
+        .find({"categories": category_name})
+        .skip(skip)
+        .limit(limit)
+        .to_list(length=limit)
+    )

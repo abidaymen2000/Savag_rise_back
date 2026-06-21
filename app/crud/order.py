@@ -99,6 +99,10 @@ async def get_order(db, order_id: ObjectId):
     return doc
 
 
+async def delete_order_by_id(db, order_id: ObjectId):
+    return await db["orders"].delete_one({"_id": order_id})
+
+
 async def update_order_status(db, order_id: ObjectId, new_status: str):
     """
     Change le champ 'status' (p.ex. pending → shipped → delivered).
@@ -107,6 +111,18 @@ async def update_order_status(db, order_id: ObjectId, new_status: str):
         {"_id": order_id},
         {"$set": {"status": new_status, "updated_at": datetime.utcnow()}}
     )
+
+
+async def push_order_field(db, order_id: ObjectId, field: str, value: dict):
+    await db["orders"].update_one(
+        {"_id": order_id},
+        {"$push": {field: value}, "$set": {"updated_at": datetime.utcnow()}},
+    )
+
+
+async def set_order_fields(db, order_id: ObjectId, data: dict):
+    data["updated_at"] = datetime.utcnow()
+    await db["orders"].update_one({"_id": order_id}, {"$set": data})
 
 
 async def mark_paid(db, order_id: ObjectId):

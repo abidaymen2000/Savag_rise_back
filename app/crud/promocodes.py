@@ -68,6 +68,18 @@ async def list_promocodes(db, skip=0, limit=50, q: Optional[str] = None) -> List
     return items
 
 
+async def count_promocodes(db, q: Optional[str] = None) -> int:
+    query: Dict[str, Any] = {}
+    if q:
+        query = {
+            "$or": [
+                {"code": {"$regex": q, "$options": "i"}},
+                {"description": {"$regex": q, "$options": "i"}},
+            ]
+        }
+    return await db[COLL].count_documents(query)
+
+
 async def update_promocode(db, promo_id: str, data: PromoUpdate) -> Optional[Dict[str, Any]]:
     upd = {k: v for k, v in data.model_dump(exclude_unset=True).items()}
     if "code" in upd:

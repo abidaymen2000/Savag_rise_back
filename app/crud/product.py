@@ -14,6 +14,21 @@ async def get_products(db, skip: int = 0, limit: int = 10) -> List[Dict[str, Any
     cursor = db["products"].find().skip(skip).limit(limit)
     return await cursor.to_list(length=limit)
 
+
+async def count_products(db, filters: Dict[str, Any]) -> int:
+    return await db["products"].count_documents(filters)
+
+
+async def list_products_page(db, filters: Dict[str, Any], skip: int, limit: int) -> List[Dict[str, Any]]:
+    return await (
+        db["products"]
+        .find(filters)
+        .sort("_id", -1)
+        .skip(skip)
+        .limit(limit)
+        .to_list(length=limit)
+    )
+
 async def create_product(db, product: Any) -> Dict[str, Any]:
     doc = jsonable_encoder(product)
     res = await db["products"].insert_one(doc)
@@ -90,6 +105,18 @@ async def search_products(
     for d in docs:
         d["id"] = str(d["_id"])
     return docs
+
+
+async def aggregate_products(db, pipeline: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    return await db["products"].aggregate(pipeline).to_list(length=limit)
+
+
+async def list_products_for_meta_catalog(db, limit: int = 5000) -> List[Dict[str, Any]]:
+    return await db["products"].find({}).sort("full_name", 1).to_list(length=limit)
+
+
+async def find_product_name(db, product_id: ObjectId):
+    return await db["products"].find_one({"_id": product_id}, {"full_name": 1, "name": 1})
 
 
 # --------------------

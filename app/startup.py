@@ -80,6 +80,27 @@ async def init_mongo():
     await db["analytics_events"].create_index([("metadata.button_id", 1), ("created_at", -1)], background=True)
     await db["analytics_events"].create_index([("has_account", 1), ("created_at", -1)], background=True)
 
+    if "admin_notifications" not in existing:
+        await db.create_collection("admin_notifications")
+    await db["admin_notifications"].create_index([("created_at", -1)], background=True)
+    await db["admin_notifications"].create_index([("recipient_admin_id", 1), ("created_at", -1)], background=True)
+    await db["admin_notifications"].create_index([("category", 1), ("created_at", -1)], background=True)
+    await db["admin_notifications"].create_index([("priority", 1), ("created_at", -1)], background=True)
+    await db["admin_notifications"].create_index("read_by_admin_ids", background=True)
+
+    if "admin_audit_logs" not in existing:
+        await db.create_collection("admin_audit_logs")
+    await db["admin_audit_logs"].create_index([("created_at", -1)], background=True)
+    await db["admin_audit_logs"].create_index([("module", 1), ("created_at", -1)], background=True)
+    await db["admin_audit_logs"].create_index([("admin_id", 1), ("created_at", -1)], background=True)
+    await db["admin_audit_logs"].create_index([("entity_type", 1), ("entity_id", 1)], background=True)
+
+    if "inventory_movements" not in existing:
+        await db.create_collection("inventory_movements")
+    await db["inventory_movements"].create_index([("created_at", -1)], background=True)
+    await db["inventory_movements"].create_index([("product_id", 1), ("created_at", -1)], background=True)
+    await db["inventory_movements"].create_index([("color", 1), ("size", 1)], background=True)
+
     if "reviews" not in existing:
         await db.create_collection("reviews")
         # indexer sur product_id et user_id pour accélérer recherches et filtres

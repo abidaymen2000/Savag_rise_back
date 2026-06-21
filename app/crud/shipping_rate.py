@@ -67,6 +67,10 @@ async def list_shipping_rates(
     return [_normalize(doc) async for doc in cursor]
 
 
+async def count_shipping_rates(db, filters: Dict[str, Any]) -> int:
+    return await db[COLLECTION].count_documents(filters)
+
+
 async def get_shipping_rate(db, rate_id: str) -> Optional[Dict[str, Any]]:
     doc = await db[COLLECTION].find_one({"_id": _oid(rate_id)})
     return _normalize(doc)
