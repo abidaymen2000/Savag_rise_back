@@ -1,10 +1,12 @@
 from bson import ObjectId
 from fastapi import HTTPException, UploadFile, status
 
+from app.crud import product as product_crud
 from app.crud import variant as variant_crud
 from app.schemas.variant import VariantInventoryOut
 from app.services.services_erp.audit_service import log_action
 from app.services.services_cms.imagekit_upload import upload_to_imagekit
+from app.services.services_store.product_service import product_to_out
 
 
 def parse_oid(product_id: str) -> str:
@@ -16,7 +18,17 @@ def parse_oid(product_id: str) -> str:
 
 
 async def create_variant(db, product_id: str, variant):
-    return await variant_crud.add_variant(db, parse_oid(product_id), variant.model_dump())
+    product_id = parse_oid(product_id)
+    created_variant = await variant_crud.add_variant(db, product_id, variant.model_dump())
+    product = await product_crud.get_product(db, product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Produit introuvable")
+
+    created_color = str(created_variant.get("color", "")).strip().casefold()
+    for mapped_variant in product_to_out(product).variants:
+        if mapped_variant.color.strip().casefold() == created_color:
+            return mapped_variant
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Variante creee mais introuvable")
 
 
 def _find_variant(variants, color: str):

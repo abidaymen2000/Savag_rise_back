@@ -8,6 +8,7 @@ from fastapi import Response
 
 from app.config import settings
 from app.crud import product as product_crud
+from app.services.services_store.meta_ids import meta_item_group_id, meta_safe_id, meta_variant_content_id
 
 
 META_CATALOG_FIELDS = [
@@ -35,11 +36,6 @@ def clean_text(value: Any, fallback: str = "") -> str:
     if value is None:
         return fallback
     return re.sub(r"\s+", " ", str(value)).strip() or fallback
-
-
-def safe_id(value: Any) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9_.:-]+", "-", str(value).strip())
-    return cleaned.strip("-") or "item"
 
 
 def first_url(images: Iterable[Any]) -> Optional[str]:
@@ -100,7 +96,7 @@ def base_row(product: Dict[str, Any], product_id: str, images: Iterable[Any]) ->
         "condition": "new",
         "price": format_price(product.get("price")),
         "brand": settings.META_CATALOG_BRAND,
-        "item_group_id": safe_id(product.get("style_id") or product_id),
+        "item_group_id": meta_item_group_id(product_id, product.get("style_id")),
         "gender": normalize_gender(product.get("gender")),
         "age_group": "adult",
         "product_type": product_type(product),
@@ -123,7 +119,7 @@ def variant_rows(product: Dict[str, Any], product_id: str) -> List[Dict[str, str
         if not sizes:
             rows.append({
                 **base,
-                "id": safe_id(f"{product_id}-{color}"),
+                "id": meta_variant_content_id(product_id, color=color),
                 "color": color,
                 "size": "",
                 "availability": "in stock" if product_in_stock else "out of stock",
@@ -136,7 +132,7 @@ def variant_rows(product: Dict[str, Any], product_id: str) -> List[Dict[str, str
             stock = int(size_stock.get("stock") or 0)
             rows.append({
                 **base,
-                "id": safe_id(f"{product_id}-{color}-{size}"),
+                "id": meta_variant_content_id(product_id, color=color, size=size),
                 "color": color,
                 "size": size,
                 "availability": "in stock" if product_in_stock and stock > 0 else "out of stock",
@@ -153,7 +149,7 @@ def product_row(product: Dict[str, Any], product_id: str) -> Dict[str, str]:
     base = base_row(product, product_id, images)
     return {
         **base,
-        "id": safe_id(product.get("sku") or product_id),
+        "id": meta_safe_id(product.get("sku") or product_id),
         "color": "",
         "size": "",
         "availability": "in stock" if product.get("in_stock", True) else "out of stock",

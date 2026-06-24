@@ -8,15 +8,32 @@ from app.analytics.service import track_event
 from app.core.pagination import build_page
 from app.crud import product as product_crud
 from app.schemas.product import ProductOut
+from app.services.services_store.meta_ids import meta_item_group_id, meta_variant_content_id
 
 
 def product_to_out(product: Dict[str, Any]) -> ProductOut:
     payload: Dict[str, Any] = {k: v for k, v in product.items() if k != "_id"}
-    payload["id"] = str(product["_id"])
+    product_id = str(product["_id"])
+    payload["id"] = product_id
+    payload["meta_item_group_id"] = meta_item_group_id(product_id, payload.get("style_id"))
 
     remapped_variants = []
     for variant in payload.get("variants", []):
         variant_payload = dict(variant)
+        color = str(variant_payload.get("color", "")).strip()
+        variant_payload["meta_content_id"] = meta_variant_content_id(product_id, color=color)
+
+        remapped_sizes = []
+        for size_item in variant_payload.get("sizes", []):
+            size_payload = dict(size_item)
+            size_payload["meta_content_id"] = meta_variant_content_id(
+                product_id,
+                color=color,
+                size=size_payload.get("size"),
+            )
+            remapped_sizes.append(size_payload)
+        variant_payload["sizes"] = remapped_sizes
+
         remapped_images = []
         for image in variant_payload.get("images", []):
             if isinstance(image, dict):

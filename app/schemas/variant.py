@@ -1,22 +1,31 @@
 # app/schemas/variant.py
-from pydantic import BaseModel, Field
 from typing import List
 
+from pydantic import BaseModel, Field
+
 from app.schemas.image import ImageOut
+
 
 class SizeStock(BaseModel):
     size: str
     stock: int
 
+
+class SizeStockOut(SizeStock):
+    meta_content_id: str
+
+
 class VariantCreate(BaseModel):
     color: str
-    sizes: List[SizeStock]           # on reçoit toutes les tailles & stocks
-    images: List[str] = []           # URLs (initialement vide)
+    sizes: List[SizeStock]
+    images: List[str] = []
+
 
 class VariantOut(VariantCreate):
     color: str
-    sizes: List[SizeStock]
-    images: List[ImageOut] = []   # on renvoie des objets ImageOut { id, url }
+    meta_content_id: str
+    sizes: List[SizeStockOut]
+    images: List[ImageOut] = []
 
     class Config:
         orm_mode = True

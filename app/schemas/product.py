@@ -59,6 +59,7 @@ class ProductCreate(ProductBase):
     variants: Optional[List[VariantCreate]] = []
 class ProductOut(ProductBase):
     id: str
+    meta_item_group_id: str
     price: float
     in_stock: bool
     variants: List[VariantOut] = []
