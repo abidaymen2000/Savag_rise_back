@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 from fastapi import Response
 
 from app.config import settings
+from app.domain.inventory import stock_available_value
 from app.crud import product as product_crud
 from app.services.services_store.meta_ids import meta_item_group_id, meta_safe_id, meta_variant_content_id
 
@@ -129,7 +130,7 @@ def variant_rows(product: Dict[str, Any], product_id: str) -> List[Dict[str, str
 
         for size_stock in sizes:
             size = clean_text(size_stock.get("size"))
-            stock = int(size_stock.get("stock") or 0)
+            stock = stock_available_value(size_stock)
             rows.append({
                 **base,
                 "id": meta_variant_content_id(product_id, color=color, size=size),

@@ -74,7 +74,7 @@ async def low_stock(db, threshold: int = 5, limit: int = 10) -> dict:
                 "product_name": item.get("full_name") or item.get("name"),
                 "color": item.get("color"),
                 "size": item.get("size"),
-                "stock": int(item.get("stock", 0) or 0),
+                "stock_available": int(item.get("stock_available", 0) or 0),
             }
             for item in items
         ],

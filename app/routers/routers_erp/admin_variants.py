@@ -53,16 +53,20 @@ async def add_variant_size(
     return await admin_variant_service.add_size(db, product_id, color, payload, admin)
 
 
-@router.patch("/{color}/sizes/{size}/stock", status_code=status.HTTP_204_NO_CONTENT, summary="Met a jour le stock d'une taille pour une couleur")
+@router.patch(
+    "/{color}/sizes/{size}/stock-on-hand",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Met a jour le stock physique d'une taille pour une couleur",
+)
 async def change_stock(
     product_id: str,
     color: str,
     size: str,
-    new_stock: int,
+    new_stock_on_hand: int,
     db=Depends(get_db),
     _admin=Depends(require_permission("products")),
 ):
-    await admin_variant_service.update_stock(db, product_id, color, size, new_stock)
+    await admin_variant_service.update_stock(db, product_id, color, size, new_stock_on_hand)
 
 
 @router.post("/{color}/images", response_model=ImageOut, status_code=status.HTTP_201_CREATED, summary="Uploader une image pour la variante couleur")

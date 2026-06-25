@@ -91,6 +91,8 @@ async def add_loyalty_transaction(
     balance_after: int,
     order_id: Optional[str] = None,
     reason: Optional[str] = None,
+    operation_key: Optional[str] = None,
+    session=None,
 ) -> LoyaltyTransactionOut:
     now = now_utc()
     data = {
@@ -100,10 +102,11 @@ async def add_loyalty_transaction(
         "value": float(value),
         "order_id": order_id,
         "reason": reason,
+        "operation_key": operation_key,
         "balance_after": int(balance_after),
         "created_at": now,
     }
-    res = await loyalty_crud.insert_loyalty_transaction(db, data)
+    res = await loyalty_crud.insert_loyalty_transaction(db, data, session=session)
     data["id"] = str(res.inserted_id)
     return LoyaltyTransactionOut(**data)
 
@@ -197,11 +200,11 @@ async def list_loyalty_transactions(db, page: int, page_size: int, user_id: str 
     )
 
 
-async def redeem_points_for_order(db, user_id: str, order_id: str, points: int, discount_value: float) -> int:
+async def redeem_points_for_order(db, user_id: str, order_id: str, points: int, discount_value: float, session=None) -> int:
     if points <= 0:
         return await get_points_balance(db, user_id)
     user_oid = validate_object_id(user_id, "Utilisateur ID")
-    res = await loyalty_crud.decrement_user_points_if_available(db, user_oid, points)
+    res = await loyalty_crud.decrement_user_points_if_available(db, user_oid, points, session=session)
     if not res:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Solde SR insuffisant")
     balance_after = int(res.get("loyalty_points_balance", 0) or 0)
@@ -214,16 +217,18 @@ async def redeem_points_for_order(db, user_id: str, order_id: str, points: int, 
         balance_after=balance_after,
         order_id=order_id,
         reason="Utilisation SR sur commande",
+        operation_key=f"order:{order_id}:points_used",
+        session=session,
     )
     return balance_after
 
 
-async def refund_redeemed_points(db, order_doc: dict, reason: str = "Remboursement SR") -> None:
+async def refund_redeemed_points(db, order_doc: dict, reason: str = "Remboursement SR", session=None) -> None:
     points = int(order_doc.get("loyalty_points_used", 0) or 0)
     user_id = order_doc.get("user_id")
     if not user_id or points <= 0 or order_doc.get("loyalty_points_refunded"):
         return
-    res = await loyalty_crud.increment_user_points(db, validate_object_id(user_id, "Utilisateur ID"), points)
+    res = await loyalty_crud.increment_user_points(db, validate_object_id(user_id, "Utilisateur ID"), points, session=session)
     balance_after = int((res or {}).get("loyalty_points_balance", 0) or 0)
     order_id = str(order_doc.get("_id") or order_doc.get("id"))
     await add_loyalty_transaction(
@@ -235,9 +240,11 @@ async def refund_redeemed_points(db, order_doc: dict, reason: str = "Rembourseme
         balance_after=balance_after,
         order_id=order_id,
         reason=reason,
+        operation_key=f"order:{order_id}:points_refund",
+        session=session,
     )
     if order_doc.get("_id"):
-        await loyalty_crud.mark_order_loyalty_points_refunded(db, order_doc["_id"])
+        await loyalty_crud.mark_order_loyalty_points_refunded(db, order_doc["_id"], session=session)
 
 
 async def award_points_for_paid_order(db, order_id: ObjectId) -> int:
@@ -263,6 +270,7 @@ async def award_points_for_paid_order(db, order_id: ObjectId) -> int:
         balance_after=balance_after,
         order_id=str(order_id),
         reason="Gain SR apres paiement",
+        operation_key=f"order:{order_id}:points_earned",
     )
     await loyalty_crud.mark_order_loyalty_awarded(db, order_id, points)
     return points

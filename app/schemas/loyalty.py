@@ -31,6 +31,7 @@ class LoyaltyTransactionOut(BaseModel):
     value: float
     order_id: Optional[str] = None
     reason: Optional[str] = None
+    operation_key: Optional[str] = None
     balance_after: int
     created_at: datetime
 

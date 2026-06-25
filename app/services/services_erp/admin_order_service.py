@@ -2,11 +2,10 @@ from datetime import datetime
 from typing import Optional
 
 from bson import ObjectId
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, status
 
-from app.analytics.service import track_event
 from app.crud import order as order_crud
-from app.services.services_store.loyalty_service import award_points_for_paid_order
+from app.services.services_store import order_domain_service
 
 
 def parse_oid(order_id: str) -> ObjectId:
@@ -54,26 +53,53 @@ async def list_orders(db, page: int, page_size: int, status_value: Optional[str]
 
 
 async def get_order(db, order_id: str):
-    order = await order_crud.get_order(db, parse_oid(order_id))
-    if not order:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Commande introuvable")
-    return order
+    order = await order_domain_service.get_order_or_404(db, order_id)
+    return order_domain_service._order_doc_to_out(order)
 
 
-async def update_status(db, order_id: str, new_status: str):
-    await order_crud.update_order_status(db, parse_oid(order_id), new_status)
-    return {"message": "Statut mis a jour"}
+async def confirm_order(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.confirm_order(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
 
 
-async def mark_paid(db, order_id: str, request: Request):
-    oid = parse_oid(order_id)
-    await order_crud.mark_paid(db, oid)
-    earned_points = await award_points_for_paid_order(db, oid)
-    await track_event(
-        db,
-        "payment_success",
-        order_id=order_id,
-        metadata={"loyalty_points_earned": earned_points},
-        request=request,
-    )
-    return {"message": "Paiement enregistre", "loyalty_points_earned": earned_points}
+async def prepare_order(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.prepare_order(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def ship_order(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.ship_order(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def deliver_order(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.deliver_order(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def cancel_order(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.cancel_order(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def mark_paid(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.mark_paid(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def request_return(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.request_return(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def mark_return_in_transit(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.mark_return_in_transit(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def receive_return(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.receive_return(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def restock_returned_items(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.restock_returned_items(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def mark_return_damaged(db, order_id: str, admin, reason: Optional[str] = None):
+    return await order_domain_service.mark_return_damaged(db, order_id, actor_type="admin", actor_id=str(admin.id), reason=reason)
+
+
+async def refund_order(db, order_id: str, admin, amount: Optional[float] = None, reason: Optional[str] = None):
+    return await order_domain_service.refund_order(db, order_id, actor_type="admin", actor_id=str(admin.id), amount=amount, reason=reason)

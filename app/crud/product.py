@@ -31,12 +31,31 @@ async def list_products_page(db, filters: Dict[str, Any], skip: int, limit: int)
 
 async def create_product(db, product: Any) -> Dict[str, Any]:
     doc = jsonable_encoder(product)
+    for variant in doc.get("variants", []) or []:
+        normalized_sizes = []
+        for size in variant.get("sizes", []) or []:
+            normalized_sizes.append({
+                "size": size["size"],
+                "stock_on_hand": int(size.get("stock_on_hand", 0) or 0),
+                "stock_reserved": int(size.get("stock_reserved", 0) or 0),
+            })
+        variant["sizes"] = normalized_sizes
     res = await db["products"].insert_one(doc)
     return await get_product(db, str(res.inserted_id))
 
 async def update_product(db, product_id: str, data: Any) -> Optional[Dict[str, Any]]:
     oid = ObjectId(product_id)
     upd = data.dict(exclude_unset=True)
+    if "variants" in upd and upd["variants"] is not None:
+        for variant in upd.get("variants", []) or []:
+            normalized_sizes = []
+            for size in variant.get("sizes", []) or []:
+                normalized_sizes.append({
+                    "size": size["size"],
+                    "stock_on_hand": int(size.get("stock_on_hand", 0) or 0),
+                    "stock_reserved": int(size.get("stock_reserved", 0) or 0),
+                })
+            variant["sizes"] = normalized_sizes
     if upd:
         await db["products"].update_one({"_id": oid}, {"$set": upd})
     return await get_product(db, product_id)

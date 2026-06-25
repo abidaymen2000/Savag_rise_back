@@ -1,35 +1,50 @@
-# app/models/order.py
-from bson import ObjectId
-from pydantic import BaseModel
-from typing import List, Optional
 from datetime import datetime
+from typing import Any, List, Optional
+
+from pydantic import BaseModel, Field
 
 from .shipping import ShippingDB
 from .utils import PyObjectId
 
+
 class OrderDB(BaseModel):
-    id: PyObjectId
-    user_id: Optional[str]
-
-    # Adresse/expédition
+    id: PyObjectId = Field(alias="_id")
+    user_id: Optional[str] = None
+    user_email: Optional[str] = None
+    is_guest: bool = False
     shipping: ShippingDB
-    shipping_address: Optional[str] = None  # (déprécié, gardé pour compat)
-
-    # Lignes de commande
-    items: List[dict]  # chaque dict = OrderItem.dict()
-
-    # Paiement
-    payment_method: str  # "cod" | "stripe" | "paypal"
-    payment_status: str  # "unpaid" | "paid" | "refunded"
-
-    # Remises / totaux
-    subtotal: Optional[float] = None       # << NEW (avant remise)
-    discount_value: Optional[float] = None # << NEW
-    promo_code: Optional[str] = None       # << NEW
-    total_amount: float                    # total payé (après remise)
-
-    # Statuts & dates
-    status: str  # "pending" | "confirmed" | "shipped" | "delivered" | "cancelled"
+    items: List[dict] = Field(default_factory=list)
+    pack_items: List[dict] = Field(default_factory=list)
+    item_snapshots: List[dict] = Field(default_factory=list)
+    inventory_allocations: List[dict] = Field(default_factory=list)
+    payment_method: str
+    payment_status: str
+    fulfillment_status: str
+    subtotal: Optional[float] = None
+    discount_value: Optional[float] = None
+    pack_discount_value: float = 0
+    promo_code: Optional[str] = None
+    loyalty_points_to_use: int = 0
+    loyalty_points_used: int = 0
+    loyalty_discount_value: float = 0
+    loyalty_eligible_amount: float = 0
+    loyalty_points_earned: int = 0
+    loyalty_points_awarded: bool = False
+    loyalty_points_refunded: bool = False
+    shipping_amount: float = 0
+    shipping_rate_id: Optional[str] = None
+    shipping_rate_name: Optional[str] = None
+    total_amount: float
+    refunded_amount: float = 0
+    status: str
+    order_status: str
+    idempotency_key: Optional[str] = None
+    payload_hash: Optional[str] = None
+    payment_reference: Optional[str] = None
+    paid_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancelled_by: Optional[str] = None
+    cancellation_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

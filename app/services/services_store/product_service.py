@@ -6,6 +6,7 @@ from pymongo import ASCENDING, DESCENDING
 
 from app.analytics.service import track_event
 from app.core.pagination import build_page
+from app.domain.inventory import inventory_projection, stock_available_value
 from app.crud import product as product_crud
 from app.schemas.product import ProductOut
 from app.services.services_store.meta_ids import meta_item_group_id, meta_variant_content_id
@@ -25,7 +26,7 @@ def product_to_out(product: Dict[str, Any]) -> ProductOut:
 
         remapped_sizes = []
         for size_item in variant_payload.get("sizes", []):
-            size_payload = dict(size_item)
+            size_payload = inventory_projection(dict(size_item))
             size_payload["meta_content_id"] = meta_variant_content_id(
                 product_id,
                 color=color,
@@ -50,6 +51,12 @@ def product_to_out(product: Dict[str, Any]) -> ProductOut:
         variant_payload["images"] = remapped_images
         remapped_variants.append(variant_payload)
     payload["variants"] = remapped_variants
+    if product.get("variants"):
+        payload["in_stock"] = any(
+            stock_available_value(size_row) > 0
+            for variant in product.get("variants", [])
+            for size_row in variant.get("sizes", [])
+        )
 
     return ProductOut(**payload)
 

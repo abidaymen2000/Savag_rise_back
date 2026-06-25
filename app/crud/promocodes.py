@@ -115,7 +115,7 @@ async def increment_use(db, code: str, user_id: Optional[str]):
     await db[COLL].update_one({"code": _norm(code)}, update)
 
 
-async def reserve_use(db, code: str, user_id: str):
+async def reserve_use(db, code: str, user_id: str, session=None):
     """
     Réserve un usage pour (code, user_id) de façon atomique.
     Echec si : code inactif/expiré, max_uses atteint, ou limite par user atteinte.
@@ -167,11 +167,12 @@ async def reserve_use(db, code: str, user_id: str):
     return await db[COLL].find_one_and_update(
         query,
         update,
+        session=session,
         return_document=ReturnDocument.AFTER
     )
 
 
-async def release_use(db, code: str, user_id: str):
+async def release_use(db, code: str, user_id: str, session=None):
     """
     Libère une réservation précédemment faite (commande annulée, etc.).
     Ne descend jamais en négatif grâce au filtre.
@@ -190,7 +191,7 @@ async def release_use(db, code: str, user_id: str):
         },
         "$set": {"updated_at": now}
     }
-    await db[COLL].update_one(query, update)
+    await db[COLL].update_one(query, update, session=session)
 
 async def set_promocode_active(db, promo_id: str, is_active: bool):
     """

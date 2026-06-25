@@ -8,7 +8,9 @@ from app.schemas.image import ImageOut
 
 class SizeStock(BaseModel):
     size: str
-    stock: int
+    stock_on_hand: int = 0
+    stock_reserved: int = 0
+    stock_available: int = 0
 
 
 class SizeStockOut(SizeStock):
@@ -37,7 +39,7 @@ class VariantColorUpdate(BaseModel):
 
 class VariantSizeCreate(BaseModel):
     size: str = Field(..., min_length=1, max_length=50)
-    stock: int = Field(0, ge=0)
+    stock_on_hand: int = Field(0, ge=0)
 
 
 class VariantInventoryOut(BaseModel):

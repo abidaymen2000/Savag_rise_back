@@ -31,12 +31,18 @@ async def export_inventory_csv(db, q=None, color=None, size=None, low_stock=None
             "sku": doc.get("sku"),
             "color": doc.get("color"),
             "size": doc.get("size"),
-            "stock": doc.get("stock", 0),
+            "stock_on_hand": doc.get("stock_on_hand", 0),
+            "stock_reserved": doc.get("stock_reserved", 0),
+            "stock_available": doc.get("stock_available", 0),
             "in_stock": doc.get("in_stock", True),
         }
         for doc in docs
     ]
-    return csv_response("inventory.csv", ["product_id", "product_name", "sku", "color", "size", "stock", "in_stock"], rows)
+    return csv_response(
+        "inventory.csv",
+        ["product_id", "product_name", "sku", "color", "size", "stock_on_hand", "stock_reserved", "stock_available", "in_stock"],
+        rows,
+    )
 
 
 async def export_orders_csv(db, filters: dict):
@@ -47,7 +53,9 @@ async def export_orders_csv(db, filters: dict):
             "created_at": doc.get("created_at"),
             "user_email": doc.get("user_email"),
             "status": doc.get("status"),
+            "order_status": doc.get("order_status", doc.get("status")),
             "payment_status": doc.get("payment_status"),
+            "fulfillment_status": doc.get("fulfillment_status"),
             "city": (doc.get("shipping") or {}).get("city"),
             "country": (doc.get("shipping") or {}).get("country"),
             "subtotal": doc.get("subtotal"),

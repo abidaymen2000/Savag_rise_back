@@ -8,21 +8,25 @@ async def list_inventory_items(db, filters, skip, limit):
     pipeline = [
         {"$unwind": "$variants"},
         {"$unwind": "$variants.sizes"},
-        {"$project": {
-            "_id": 1,
-            "name": 1,
-            "full_name": 1,
-            "sku": 1,
-            "in_stock": 1,
-            "color": "$variants.color",
-            "size": "$variants.sizes.size",
-            "stock": "$variants.sizes.stock",
-        }},
+        {
+            "$project": {
+                "_id": 1,
+                "name": 1,
+                "full_name": 1,
+                "sku": 1,
+                "in_stock": 1,
+                "color": "$variants.color",
+                "size": "$variants.sizes.size",
+                "stock_on_hand": "$variants.sizes.stock_on_hand",
+                "stock_reserved": {"$ifNull": ["$variants.sizes.stock_reserved", 0]},
+            }
+        },
+        {"$addFields": {"stock_available": {"$subtract": ["$stock_on_hand", "$stock_reserved"]}}},
     ]
     if filters:
         pipeline.append({"$match": filters})
     pipeline.extend([
-        {"$sort": {"stock": 1, "full_name": 1}},
+        {"$sort": {"stock_available": 1, "full_name": 1}},
         {"$skip": skip},
         {"$limit": limit},
     ])
@@ -33,16 +37,20 @@ async def count_inventory_items(db, filters):
     pipeline = [
         {"$unwind": "$variants"},
         {"$unwind": "$variants.sizes"},
-        {"$project": {
-            "_id": 1,
-            "name": 1,
-            "full_name": 1,
-            "sku": 1,
-            "in_stock": 1,
-            "color": "$variants.color",
-            "size": "$variants.sizes.size",
-            "stock": "$variants.sizes.stock",
-        }},
+        {
+            "$project": {
+                "_id": 1,
+                "name": 1,
+                "full_name": 1,
+                "sku": 1,
+                "in_stock": 1,
+                "color": "$variants.color",
+                "size": "$variants.sizes.size",
+                "stock_on_hand": "$variants.sizes.stock_on_hand",
+                "stock_reserved": {"$ifNull": ["$variants.sizes.stock_reserved", 0]},
+            }
+        },
+        {"$addFields": {"stock_available": {"$subtract": ["$stock_on_hand", "$stock_reserved"]}}},
     ]
     if filters:
         pipeline.append({"$match": filters})
@@ -58,10 +66,10 @@ async def find_variant_size(db, product_id, color, size):
     )
 
 
-async def set_variant_stock(db, product_id, color, size, new_stock):
+async def set_variant_stock(db, product_id, color, size, new_stock_on_hand):
     return await db["products"].update_one(
         {"_id": product_id, "variants.color": color},
-        {"$set": {"variants.$.sizes.$[s].stock": new_stock, "updated_at": datetime.utcnow()}},
+        {"$set": {"variants.$.sizes.$[s].stock_on_hand": new_stock_on_hand, "updated_at": datetime.utcnow()}},
         array_filters=[{"s.size": size}],
     )
 

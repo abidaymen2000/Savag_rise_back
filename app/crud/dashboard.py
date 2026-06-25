@@ -36,12 +36,12 @@ async def summarize_revenue_for_period(db, start: datetime):
 async def aggregate_top_product_sales(db, limit):
     return await db["orders"].aggregate([
         {"$match": {"status": {"$ne": "cancelled"}}},
-        {"$unwind": "$items"},
+        {"$unwind": "$item_snapshots"},
         {
             "$group": {
-                "_id": "$items.product_id",
-                "qty": {"$sum": "$items.qty"},
-                "revenue": {"$sum": {"$multiply": ["$items.qty", "$items.unit_price"]}},
+                "_id": "$item_snapshots.product_id",
+                "qty": {"$sum": "$item_snapshots.qty"},
+                "revenue": {"$sum": "$item_snapshots.line_total"},
             }
         },
         {"$sort": {"qty": -1}},
@@ -60,8 +60,6 @@ async def list_low_stock_items(db, threshold, limit):
     return await db["products"].aggregate([
         {"$unwind": "$variants"},
         {"$unwind": "$variants.sizes"},
-        {"$match": {"variants.sizes.stock": {"$lte": threshold}}},
-        {"$sort": {"variants.sizes.stock": 1}},
         {
             "$project": {
                 "_id": 1,
@@ -69,9 +67,14 @@ async def list_low_stock_items(db, threshold, limit):
                 "full_name": 1,
                 "color": "$variants.color",
                 "size": "$variants.sizes.size",
-                "stock": "$variants.sizes.stock",
+                "stock_on_hand": "$variants.sizes.stock_on_hand",
+                "stock_reserved": {"$ifNull": ["$variants.sizes.stock_reserved", 0]},
             }
         },
+        {"$addFields": {"stock_available": {"$subtract": ["$stock_on_hand", "$stock_reserved"]}}},
+        {"$match": {"stock_available": {"$lte": threshold}}},
+        {"$sort": {"stock_available": 1}},
+        {"$project": {"_id": 1, "name": 1, "full_name": 1, "color": 1, "size": 1, "stock_available": 1}},
         {"$limit": limit},
     ]).to_list(length=limit)
 
@@ -80,7 +83,14 @@ async def count_low_stock_items(db, threshold):
     rows = await db["products"].aggregate([
         {"$unwind": "$variants"},
         {"$unwind": "$variants.sizes"},
-        {"$match": {"variants.sizes.stock": {"$lte": threshold}}},
+        {
+            "$project": {
+                "stock_on_hand": "$variants.sizes.stock_on_hand",
+                "stock_reserved": {"$ifNull": ["$variants.sizes.stock_reserved", 0]},
+            }
+        },
+        {"$addFields": {"stock_available": {"$subtract": ["$stock_on_hand", "$stock_reserved"]}}},
+        {"$match": {"stock_available": {"$lte": threshold}}},
         {"$count": "total"},
     ]).to_list(length=1)
     return int(rows[0]["total"]) if rows else 0

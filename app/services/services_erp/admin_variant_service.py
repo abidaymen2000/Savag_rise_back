@@ -3,9 +3,10 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.crud import product as product_crud
 from app.crud import variant as variant_crud
+from app.domain.inventory import inventory_projection
 from app.schemas.variant import VariantInventoryOut
-from app.services.services_erp.audit_service import log_action
 from app.services.services_cms.imagekit_upload import upload_to_imagekit
+from app.services.services_erp.audit_service import log_action
 from app.services.services_store.product_service import product_to_out
 
 
@@ -19,7 +20,16 @@ def parse_oid(product_id: str) -> str:
 
 async def create_variant(db, product_id: str, variant):
     product_id = parse_oid(product_id)
-    created_variant = await variant_crud.add_variant(db, product_id, variant.model_dump())
+    payload = variant.model_dump()
+    payload["sizes"] = [
+        {
+            "size": row["size"],
+            "stock_on_hand": int(row.get("stock_on_hand", 0) or 0),
+            "stock_reserved": int(row.get("stock_reserved", 0) or 0),
+        }
+        for row in payload.get("sizes", [])
+    ]
+    created_variant = await variant_crud.add_variant(db, product_id, payload)
     product = await product_crud.get_product(db, product_id)
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Produit introuvable")
@@ -61,7 +71,7 @@ async def rename_color(db, product_id: str, current_color: str, payload, admin):
         if not modified:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La couleur n'a pas pu etre renommee")
 
-    result = {**current_variant, "color": new_color}
+    result = {**current_variant, "color": new_color, "sizes": [inventory_projection(dict(row)) for row in current_variant.get("sizes", [])]}
     await log_action(
         db,
         admin=admin,
@@ -89,12 +99,12 @@ async def add_size(db, product_id: str, color: str, payload, admin):
     if any(str(item.get("size", "")).strip().casefold() == size.casefold() for item in variant.get("sizes", [])):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cette taille existe deja pour cette couleur")
 
-    size_data = {"size": size, "stock": payload.stock}
+    size_data = {"size": size, "stock_on_hand": payload.stock_on_hand, "stock_reserved": 0}
     modified = await variant_crud.add_size_to_variant(db, product_id, variant["color"], size_data)
     if not modified:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La taille n'a pas pu etre ajoutee")
 
-    result = {**variant, "sizes": [*variant.get("sizes", []), size_data]}
+    result = {**variant, "sizes": [inventory_projection(dict(row)) for row in [*variant.get("sizes", []), size_data]]}
     await log_action(
         db,
         admin=admin,
@@ -102,13 +112,13 @@ async def add_size(db, product_id: str, color: str, payload, admin):
         module="inventory",
         entity_type="product",
         entity_id=product_id,
-        metadata={"color": variant["color"], "size": size, "stock": payload.stock},
+        metadata={"color": variant["color"], "size": size, "stock_on_hand": payload.stock_on_hand},
     )
     return VariantInventoryOut(**result)
 
 
-async def update_stock(db, product_id: str, color: str, size: str, new_stock: int):
-    modified = await variant_crud.update_variant_stock(db, parse_oid(product_id), color, size, new_stock)
+async def update_stock(db, product_id: str, color: str, size: str, new_stock_on_hand: int):
+    modified = await variant_crud.update_variant_stock(db, parse_oid(product_id), color, size, new_stock_on_hand)
     if not modified:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variante ou taille non trouvee")
 

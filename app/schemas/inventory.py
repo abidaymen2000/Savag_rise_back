@@ -10,7 +10,9 @@ class InventoryItemOut(BaseModel):
     sku: Optional[str] = None
     color: Optional[str] = None
     size: Optional[str] = None
-    stock: int
+    stock_on_hand: int
+    stock_reserved: int
+    stock_available: int
     in_stock: bool = True
     low_stock: bool = False
 
@@ -20,7 +22,7 @@ class InventoryAdjustmentIn(BaseModel):
     color: str
     size: str
     delta: Optional[int] = None
-    new_stock: Optional[int] = Field(None, ge=0)
+    new_stock_on_hand: Optional[int] = Field(None, ge=0)
     reason: str = Field(..., min_length=2, max_length=300)
 
 
@@ -30,11 +32,17 @@ class InventoryMovementOut(BaseModel):
     product_name: Optional[str] = None
     color: str
     size: str
-    previous_stock: int
-    new_stock: int
-    delta: int
+    movement_type: str = "manual_adjustment"
+    on_hand_delta: int
+    reserved_delta: int
+    on_hand_before: int
+    on_hand_after: int
+    reserved_before: int
+    reserved_after: int
     reason: str
     source: str = "manual"
+    operation_key: Optional[str] = None
     admin_id: Optional[str] = None
     admin_email: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
     created_at: datetime

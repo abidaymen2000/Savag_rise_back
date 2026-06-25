@@ -6,3 +6,7 @@ from .variant import VariantDB
 from .shipping import ShippingDB
 from .promocode import promocode_doc
 from .admin import AdminInDB
+from .inventory_movement import InventoryMovementDB
+from .order_history import OrderHistoryDB
+from .outbox_event import OutboxEventDB
+from .loyalty_transaction import LoyaltyTransactionDB

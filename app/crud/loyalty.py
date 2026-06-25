@@ -19,8 +19,8 @@ async def find_user_points_balance(db, user_id):
     return await db["users"].find_one({"_id": user_id}, {"loyalty_points_balance": 1})
 
 
-async def insert_loyalty_transaction(db, data):
-    return await db[TRANSACTIONS_COLLECTION].insert_one(data)
+async def insert_loyalty_transaction(db, data, session=None):
+    return await db[TRANSACTIONS_COLLECTION].insert_one(data, session=session)
 
 
 async def list_loyalty_transactions(db, filters, skip=0, limit=20):
@@ -38,18 +38,20 @@ async def count_loyalty_transactions(db, filters):
     return await db[TRANSACTIONS_COLLECTION].count_documents(filters)
 
 
-async def decrement_user_points_if_available(db, user_id, points):
+async def decrement_user_points_if_available(db, user_id, points, session=None):
     return await db["users"].find_one_and_update(
         {"_id": user_id, "loyalty_points_balance": {"$gte": points}},
         {"$inc": {"loyalty_points_balance": -points}},
+        session=session,
         return_document=True,
     )
 
 
-async def increment_user_points(db, user_id, points):
+async def increment_user_points(db, user_id, points, session=None):
     return await db["users"].find_one_and_update(
         {"_id": user_id},
         {"$inc": {"loyalty_points_balance": points}},
+        session=session,
         return_document=True,
     )
 
@@ -61,10 +63,11 @@ async def set_user_points_balance(db, user_id, balance):
     )
 
 
-async def mark_order_loyalty_points_refunded(db, order_id):
+async def mark_order_loyalty_points_refunded(db, order_id, session=None):
     return await db["orders"].update_one(
         {"_id": order_id},
         {"$set": {"loyalty_points_refunded": True}},
+        session=session,
     )
 
 
@@ -72,8 +75,9 @@ async def find_order_by_id(db, order_id):
     return await db["orders"].find_one({"_id": order_id})
 
 
-async def mark_order_loyalty_awarded(db, order_id, points):
+async def mark_order_loyalty_awarded(db, order_id, points, session=None):
     return await db["orders"].update_one(
         {"_id": order_id},
         {"$set": {"loyalty_points_awarded": True, "loyalty_points_earned": points}},
+        session=session,
     )

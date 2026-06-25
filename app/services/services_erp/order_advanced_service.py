@@ -48,31 +48,6 @@ async def assign_order(db, order_id: str, payload, admin):
     return {"assigned_admin_id": payload.admin_id}
 
 
-async def add_timeline_event(db, order_id: str, event_type: str, message: str, admin, from_status=None, to_status=None):
-    oid = parse_oid(order_id)
-    event = {
-        "id": str(uuid4()),
-        "type": event_type,
-        "message": message,
-        "from_status": from_status,
-        "to_status": to_status,
-        "admin_id": str(admin.id) if admin else None,
-        "admin_email": admin.email if admin else None,
-        "created_at": datetime.utcnow(),
-    }
-    await order_crud.push_order_field(db, oid, "timeline", event)
-    return event
-
-
-async def update_status_advanced(db, order_id: str, new_status: str, admin):
-    order = await get_order_or_404(db, order_id)
-    old_status = order.get("status")
-    await order_crud.update_order_status(db, parse_oid(order_id), new_status)
-    event = await add_timeline_event(db, order_id, "status_changed", f"Statut {old_status} -> {new_status}", admin, old_status, new_status)
-    await log_action(db, admin=admin, action="order.status.change", module="orders", entity_type="order", entity_id=order_id, metadata={"from": old_status, "to": new_status})
-    return {"message": "Statut mis a jour", "event": OrderTimelineEventOut(**event)}
-
-
 async def list_timeline(db, order_id: str):
     order = await get_order_or_404(db, order_id)
     return [OrderTimelineEventOut(**event) for event in order.get("timeline", [])]

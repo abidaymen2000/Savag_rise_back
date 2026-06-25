@@ -1,20 +1,21 @@
-# app/models/variant.py
 from typing import List
-from pydantic import BaseModel
+
+from pydantic import BaseModel, Field
 
 from .image import ImageModel
 
-class SizeStock(BaseModel):
+
+class SizeStockModel(BaseModel):
     size: str
-    stock: int
+    stock_on_hand: int = 0
+    stock_reserved: int = 0
+
 
 class VariantDB(BaseModel):
     color: str
-    size: str
-    images: List[ImageModel] = []
+    sizes: List[SizeStockModel] = Field(default_factory=list)
+    images: List[ImageModel] = Field(default_factory=list)
 
     class Config:
         orm_mode = True
         arbitrary_types_allowed = True
-        # Si tu utilises PyObjectId ailleurs, tu peux aussi préciser :
-        # arbitrary_types_allowed = True
