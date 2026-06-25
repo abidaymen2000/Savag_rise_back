@@ -46,6 +46,10 @@ COLLECTION_INDEXES: dict[str, list[dict[str, Any]]] = {
         {"keys": [("fulfillment_status", 1), ("created_at", -1)], "options": {"background": True}},
         {"keys": [("user_email", 1), ("created_at", -1)], "options": {"background": True}},
     ],
+    "order_idempotency": [
+        {"keys": "key", "options": {"unique": True, "background": True}},
+        {"keys": [("status", 1), ("updated_at", -1)], "options": {"background": True}},
+    ],
     "analytics_events": [
         {"keys": [("event_name", 1), ("created_at", -1)], "options": {"background": True}},
         {"keys": [("product_id", 1), ("event_name", 1), ("created_at", -1)], "options": {"background": True}},

@@ -82,6 +82,38 @@ def _payload_hash(payload: dict) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _round_money(value: float) -> float:
+    return round(float(value), 2)
+
+
+def _distribute_discount(lines: list[dict[str, Any]], discount_total: float) -> None:
+    discount_total = _round_money(discount_total)
+    if discount_total <= 0 or not lines:
+        for line in lines:
+            line["discount_amount"] = 0.0
+            line["unit_price"] = line["unit_price_original"]
+            line["unit_price_final"] = line["unit_price_original"]
+            line["line_total"] = _round_money(line["unit_price_original"] * line["qty"])
+        return
+
+    total_original = sum(_round_money(line["unit_price_original"] * line["qty"]) for line in lines)
+    allocated = 0.0
+    for index, line in enumerate(lines):
+        original_total = _round_money(line["unit_price_original"] * line["qty"])
+        if index == len(lines) - 1:
+            line_discount = _round_money(discount_total - allocated)
+        else:
+            ratio = (original_total / total_original) if total_original > 0 else 0
+            line_discount = _round_money(discount_total * ratio)
+            allocated = _round_money(allocated + line_discount)
+        final_total = _round_money(max(0.0, original_total - line_discount))
+        qty = max(int(line["qty"]), 1)
+        line["discount_amount"] = line_discount
+        line["unit_price_final"] = _round_money(final_total / qty)
+        line["unit_price"] = line["unit_price_final"]
+        line["line_total"] = final_total
+
+
 def _order_doc_to_out(doc: dict) -> dict:
     payload = {k: v for k, v in doc.items() if k != "_id"}
     payload["id"] = str(doc["_id"])
@@ -127,7 +159,7 @@ async def _build_order_materialization(db, order_in) -> dict:
         variant_row = _find_variant_or_fail(product, item.color, item.size)
         unit_price = float(product["price"])
         qty = int(item.qty)
-        line_total = round(unit_price * qty, 2)
+        line_total = _round_money(unit_price * qty)
         subtotal += line_total
         snapshot = {
             "item_type": "single",
@@ -138,17 +170,18 @@ async def _build_order_materialization(db, order_in) -> dict:
             "product_name": product.get("full_name") or product.get("name"),
             "color": item.color,
             "size": item.size,
-            "image": None,
-            "unit_price_normal": unit_price,
+            "unit_price_original": unit_price,
+            "unit_price": unit_price,
             "unit_price_final": unit_price,
-            "discount_value": 0.0,
+            "discount_amount": 0.0,
             "qty": qty,
             "line_total": line_total,
             "pack_id": None,
             "pack_title": None,
+            "stock_available": int(variant_row["stock_available"]),
         }
         item_snapshots.append(snapshot)
-        base_items.append({"product_id": item.product_id, "color": item.color, "size": item.size, "qty": qty, "unit_price": unit_price})
+        base_items.append({"product_id": item.product_id, "color": item.color, "size": item.size, "qty": qty})
         key = (item.product_id, item.color, item.size)
         inventory_allocations.setdefault(key, {"product_id": item.product_id, "color": item.color, "size": item.size, "qty": 0})
         inventory_allocations[key]["qty"] += qty
@@ -163,6 +196,7 @@ async def _build_order_materialization(db, order_in) -> dict:
         components_by_id = {component["id"]: component for component in components}
         pack_original = 0.0
         component_payloads = []
+        pack_component_snapshots = []
         for item in selection.items:
             component = components_by_id.get(item.component_id) if item.component_id else None
             if component is None:
@@ -177,15 +211,15 @@ async def _build_order_materialization(db, order_in) -> dict:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Couleur invalide pour le pack")
             if component.get("size") and component["size"] != item.size:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Taille invalide pour le pack")
-            _find_variant_or_fail(product, item.color, item.size)
+            variant_row = _find_variant_or_fail(product, item.color, item.size)
             unit_price = float(product["price"])
             line_qty = int(selection.qty) * int(component.get("qty", 1) or 1) * int(item.qty)
-            line_total = round(unit_price * line_qty, 2)
+            line_total = _round_money(unit_price * line_qty)
             pack_original += line_total
             key = (item.product_id, item.color, item.size)
             inventory_allocations.setdefault(key, {"product_id": item.product_id, "color": item.color, "size": item.size, "qty": 0})
             inventory_allocations[key]["qty"] += line_qty
-            item_snapshots.append({
+            pack_component_snapshots.append({
                 "item_type": "pack_component",
                 "product_id": item.product_id,
                 "variant_id": f"{item.product_id}:{item.color}:{item.size}",
@@ -194,15 +228,16 @@ async def _build_order_materialization(db, order_in) -> dict:
                 "product_name": product.get("full_name") or product.get("name"),
                 "color": item.color,
                 "size": item.size,
-                "image": None,
-                "unit_price_normal": unit_price,
+                "unit_price_original": unit_price,
+                "unit_price": unit_price,
                 "unit_price_final": unit_price,
-                "discount_value": 0.0,
+                "discount_amount": 0.0,
                 "qty": line_qty,
                 "line_total": line_total,
                 "pack_id": str(pack["_id"]),
                 "pack_title": pack.get("title"),
                 "pack_component_id": component["id"],
+                "stock_available": int(variant_row["stock_available"]),
             })
             component_payloads.append({
                 "component_id": component["id"],
@@ -210,14 +245,16 @@ async def _build_order_materialization(db, order_in) -> dict:
                 "color": item.color,
                 "size": item.size,
                 "qty": int(component.get("qty", 1) or 1) * int(item.qty),
-                "unit_price": unit_price,
+                "unit_price_original": unit_price,
             })
 
         if pack.get("discount_type") == "percent":
             pack_discount = pack_original * (float(pack.get("discount_value", 0)) / 100)
         else:
             pack_discount = float(pack.get("discount_value", 0)) * int(selection.qty)
-        pack_discount = round(min(max(pack_discount, 0), pack_original), 2)
+        pack_discount = _round_money(min(max(pack_discount, 0), pack_original))
+        _distribute_discount(pack_component_snapshots, pack_discount)
+        item_snapshots.extend(pack_component_snapshots)
         pack_discount_total += pack_discount
         subtotal += pack_original
         pack_items_out.append({
@@ -225,9 +262,9 @@ async def _build_order_materialization(db, order_in) -> dict:
             "title": pack["title"],
             "qty": int(selection.qty),
             "items": component_payloads,
-            "original_amount": round(pack_original, 2),
-            "discount_value": pack_discount,
-            "final_amount": round(pack_original - pack_discount, 2),
+            "original_amount": _round_money(pack_original),
+            "discount_amount": pack_discount,
+            "final_amount": _round_money(pack_original - pack_discount),
         })
 
     return {
@@ -235,8 +272,8 @@ async def _build_order_materialization(db, order_in) -> dict:
         "item_snapshots": item_snapshots,
         "inventory_allocations": list(inventory_allocations.values()),
         "pack_items": pack_items_out,
-        "subtotal": round(subtotal, 2),
-        "pack_discount_value": round(pack_discount_total, 2),
+        "subtotal": _round_money(subtotal),
+        "pack_discount_value": _round_money(pack_discount_total),
     }
 
 
@@ -280,25 +317,46 @@ async def quote_order(db, order_in, current_user):
             order_total_before_promos,
             settings_data,
         )
-        order_total_before_promos = max(0.0, round(order_total_before_promos - loyalty_discount_value, 2))
+        order_total_before_promos = max(0.0, _round_money(order_total_before_promos - loyalty_discount_value))
     shipping_quote = await resolve_shipping_rate(
         db,
         country=order_in.shipping.country,
         city=order_in.shipping.city,
         order_total=order_total_before_promos,
     )
+    total_amount = _round_money(order_total_before_promos + shipping_quote["shipping_amount"])
+    promotion = None
+    if applied_code:
+        promotion = {"code": applied_code, "discount_amount": _round_money(promo_discount_value or 0.0)}
+    loyalty = None
+    if order_in.loyalty_points_to_use > 0 or loyalty_points_used > 0:
+        loyalty = {
+            "points_requested": int(order_in.loyalty_points_to_use),
+            "points_used": int(loyalty_points_used),
+            "discount_amount": _round_money(loyalty_discount_value),
+        }
     return {
+        "currency": settings.META_CATALOG_CURRENCY,
         "subtotal": materialized["subtotal"],
+        "pack_discount": materialized["pack_discount_value"],
+        "promotion_discount": _round_money(promo_discount_value or 0.0),
+        "loyalty_discount": _round_money(loyalty_discount_value),
+        "shipping_amount": shipping_quote["shipping_amount"],
+        "total": total_amount,
+        "items": materialized["item_snapshots"],
+        "promotion": promotion,
+        "loyalty": loyalty,
+        "warnings": [],
         "pack_discount_value": materialized["pack_discount_value"],
         "promo_code": applied_code,
-        "promo_discount_value": promo_discount_value or 0.0,
-        "discount_value": round(discount_value, 2),
+        "promo_discount_value": _round_money(promo_discount_value or 0.0),
+        "discount_value": _round_money(discount_value),
         "loyalty_points_used": loyalty_points_used,
-        "loyalty_discount_value": loyalty_discount_value,
+        "loyalty_discount_value": _round_money(loyalty_discount_value),
         "shipping_amount": shipping_quote["shipping_amount"],
         "shipping_rate_id": shipping_quote["shipping_rate_id"],
         "shipping_rate_name": shipping_quote["shipping_rate_name"],
-        "total_amount": round(order_total_before_promos + shipping_quote["shipping_amount"], 2),
+        "total_amount": total_amount,
         "pack_items": materialized["pack_items"],
         "item_snapshots": materialized["item_snapshots"],
         "inventory_allocations": materialized["inventory_allocations"],
@@ -431,123 +489,161 @@ async def _fulfill_allocation(session, db, allocation: dict, order_id: str, orde
     )
 
 
+async def _acquire_order_idempotency(db, idempotency_key: str, payload_hash: str) -> dict:
+    now = datetime.utcnow()
+    marker = {
+        "key": idempotency_key,
+        "payload_hash": payload_hash,
+        "status": "in_progress",
+        "created_at": now,
+        "updated_at": now,
+    }
+    try:
+        await db["order_idempotency"].insert_one(marker)
+        return marker
+    except DuplicateKeyError:
+        existing = await db["order_idempotency"].find_one({"key": idempotency_key})
+        if existing and existing.get("payload_hash") != payload_hash:
+            raise InvalidIdempotencyKeyReuseError()
+        if existing and existing.get("status") == "completed" and existing.get("order_id"):
+            order = await db["orders"].find_one({"_id": _parse_oid(existing["order_id"], "Commande ID")})
+            if order:
+                return {"order": order}
+        raise HTTPException(status.HTTP_409_CONFLICT, "Une requete avec cette cle d'idempotence est deja en cours")
+
+
+async def _complete_order_idempotency(db, idempotency_key: str, order_id: str) -> None:
+    await db["order_idempotency"].update_one(
+        {"key": idempotency_key},
+        {"$set": {"status": "completed", "order_id": order_id, "updated_at": datetime.utcnow()}},
+    )
+
+
 async def create_order(db, order_in, background_tasks, request, current_user, *, idempotency_key: str):
     if not idempotency_key:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Idempotency-Key requis")
     payload_hash = _payload_hash(order_in.model_dump(mode="json"))
+    marker = await _acquire_order_idempotency(db, idempotency_key, payload_hash)
+    if marker.get("order"):
+        return _order_doc_to_out(marker["order"])
     existing = await db["orders"].find_one({"idempotency_key": idempotency_key})
     if existing:
         if existing.get("payload_hash") != payload_hash:
             raise InvalidIdempotencyKeyReuseError()
+        await _complete_order_idempotency(db, idempotency_key, str(existing["_id"]))
         return _order_doc_to_out(existing)
-
-    quote = await quote_order(db, order_in, current_user)
-    user_id = str(current_user["_id"]) if current_user else None
-    customer_email = current_user["email"] if current_user else order_in.shipping.email
-    now = datetime.utcnow()
-    order_doc = {
-        "user_id": user_id,
-        "user_email": customer_email,
-        "is_guest": current_user is None,
-        "shipping": order_in.shipping.model_dump(),
-        "items": [item.model_dump() for item in order_in.items],
-        "pack_items": quote["pack_items"],
-        "item_snapshots": quote["item_snapshots"],
-        "inventory_allocations": quote["inventory_allocations"],
-        "payment_method": order_in.payment_method,
-        "payment_status": PAYMENT_STATUS_UNPAID,
-        "status": ORDER_STATUS_PENDING,
-        "order_status": ORDER_STATUS_PENDING,
-        "fulfillment_status": FULFILLMENT_STATUS_RESERVED,
-        "subtotal": quote["subtotal"],
-        "discount_value": quote["discount_value"],
-        "pack_discount_value": quote["pack_discount_value"],
-        "promo_code": quote.get("promo_code"),
-        "loyalty_points_to_use": order_in.loyalty_points_to_use,
-        "loyalty_points_used": quote["loyalty_points_used"],
-        "loyalty_discount_value": quote["loyalty_discount_value"],
-        "loyalty_eligible_amount": max(0.0, quote["total_amount"] - quote["shipping_amount"]),
-        "loyalty_points_earned": 0,
-        "loyalty_points_awarded": False,
-        "loyalty_points_refunded": False,
-        "shipping_amount": quote["shipping_amount"],
-        "shipping_rate_id": quote["shipping_rate_id"],
-        "shipping_rate_name": quote["shipping_rate_name"],
-        "total_amount": quote["total_amount"],
-        "refunded_amount": 0.0,
-        "idempotency_key": idempotency_key,
-        "payload_hash": payload_hash,
-        "created_at": now,
-        "updated_at": now,
-    }
-    async with await db.client.start_session() as session:
-        async with session.start_transaction():
-            if order_doc["promo_code"]:
-                reserved = await promo_crud.reserve_use(db, order_doc["promo_code"], user_id, session=session)
-                if not reserved:
-                    raise HTTPException(status.HTTP_409_CONFLICT, "Ce code promo n'est plus disponible ou a deja ete utilise par ce compte.")
-            insert_result = await db["orders"].insert_one(order_doc, session=session)
-            order_id = str(insert_result.inserted_id)
-            for index, allocation in enumerate(order_doc["inventory_allocations"]):
-                await _reserve_allocation(session, db, allocation, order_id, str(index))
-            if quote["loyalty_points_used"] > 0:
-                await redeem_points_for_order(
+    try:
+        quote = await quote_order(db, order_in, current_user)
+        user_id = str(current_user["_id"]) if current_user else None
+        customer_email = current_user["email"] if current_user else order_in.shipping.email
+        now = datetime.utcnow()
+        order_doc = {
+            "user_id": user_id,
+            "user_email": customer_email,
+            "is_guest": current_user is None,
+            "shipping": order_in.shipping.model_dump(),
+            "items": [item.model_dump() for item in order_in.items],
+            "pack_items": quote["pack_items"],
+            "item_snapshots": quote["item_snapshots"],
+            "inventory_allocations": quote["inventory_allocations"],
+            "payment_method": order_in.payment_method,
+            "payment_status": PAYMENT_STATUS_UNPAID,
+            "status": ORDER_STATUS_PENDING,
+            "order_status": ORDER_STATUS_PENDING,
+            "fulfillment_status": FULFILLMENT_STATUS_RESERVED,
+            "subtotal": quote["subtotal"],
+            "discount_value": quote["discount_value"],
+            "pack_discount_value": quote["pack_discount_value"],
+            "promo_code": quote.get("promo_code"),
+            "loyalty_points_to_use": order_in.loyalty_points_to_use,
+            "loyalty_points_used": quote["loyalty_points_used"],
+            "loyalty_discount_value": quote["loyalty_discount_value"],
+            "loyalty_eligible_amount": max(0.0, quote["total_amount"] - quote["shipping_amount"]),
+            "loyalty_points_earned": 0,
+            "loyalty_points_awarded": False,
+            "loyalty_points_refunded": False,
+            "shipping_amount": quote["shipping_amount"],
+            "shipping_rate_id": quote["shipping_rate_id"],
+            "shipping_rate_name": quote["shipping_rate_name"],
+            "total_amount": quote["total_amount"],
+            "refunded_amount": 0.0,
+            "idempotency_key": idempotency_key,
+            "payload_hash": payload_hash,
+            "created_at": now,
+            "updated_at": now,
+        }
+        async with await db.client.start_session() as session:
+            async with session.start_transaction():
+                if order_doc["promo_code"]:
+                    reserved = await promo_crud.reserve_use(db, order_doc["promo_code"], user_id, session=session)
+                    if not reserved:
+                        raise HTTPException(status.HTTP_409_CONFLICT, "Ce code promo n'est plus disponible ou a deja ete utilise par ce compte.")
+                insert_result = await db["orders"].insert_one(order_doc, session=session)
+                order_id = str(insert_result.inserted_id)
+                for index, allocation in enumerate(order_doc["inventory_allocations"]):
+                    await _reserve_allocation(session, db, allocation, order_id, str(index))
+                if quote["loyalty_points_used"] > 0:
+                    await redeem_points_for_order(
+                        db,
+                        user_id=user_id,
+                        order_id=order_id,
+                        points=quote["loyalty_points_used"],
+                        discount_value=quote["loyalty_discount_value"],
+                        session=session,
+                    )
+                await append_history(
                     db,
-                    user_id=user_id,
-                    order_id=order_id,
-                    points=quote["loyalty_points_used"],
-                    discount_value=quote["loyalty_discount_value"],
                     session=session,
+                    order_id=order_id,
+                    event_type="order_created",
+                    to_order_status=ORDER_STATUS_PENDING,
+                    to_payment_status=PAYMENT_STATUS_UNPAID,
+                    to_fulfillment_status=FULFILLMENT_STATUS_RESERVED,
+                    changed_by=user_id,
+                    actor_type="customer" if user_id else "guest",
+                    metadata={"idempotency_key": idempotency_key},
                 )
-            await append_history(
-                db,
-                session=session,
-                order_id=order_id,
-                event_type="order_created",
-                to_order_status=ORDER_STATUS_PENDING,
-                to_payment_status=PAYMENT_STATUS_UNPAID,
-                to_fulfillment_status=FULFILLMENT_STATUS_RESERVED,
-                changed_by=user_id,
-                actor_type="customer" if user_id else "guest",
-                metadata={"idempotency_key": idempotency_key},
-            )
-            await outbox_service.enqueue(
-                db,
-                session=session,
-                event_type="order_created",
-                aggregate_type="order",
-                aggregate_id=order_id,
-                operation_key=f"order:{order_id}:created",
-                payload={"order_id": order_id},
-            )
-            await outbox_service.enqueue(
-                db,
-                session=session,
-                event_type="send_order_email",
-                aggregate_type="order",
-                aggregate_id=order_id,
-                operation_key=f"order:{order_id}:send-email",
-                payload={"order_id": order_id, "recipient": customer_email},
-            )
-            await outbox_service.enqueue(
-                db,
-                session=session,
-                event_type="analytics_order_completed",
-                aggregate_type="order",
-                aggregate_id=order_id,
-                operation_key=f"order:{order_id}:analytics-order-completed",
-                payload={"order_id": order_id},
-            )
-            await outbox_service.enqueue(
-                db,
-                session=session,
-                event_type="meta_purchase_pending",
-                aggregate_type="order",
-                aggregate_id=order_id,
-                operation_key=f"order:{order_id}:meta-purchase-pending",
-                payload={"order_id": order_id, "currency": settings.META_CATALOG_CURRENCY, "event_id": f"purchase:{order_id}"},
-            )
-    created = await db["orders"].find_one({"idempotency_key": idempotency_key})
+                await outbox_service.enqueue(
+                    db,
+                    session=session,
+                    event_type="order_created",
+                    aggregate_type="order",
+                    aggregate_id=order_id,
+                    operation_key=f"order:{order_id}:created",
+                    payload={"order_id": order_id},
+                )
+                await outbox_service.enqueue(
+                    db,
+                    session=session,
+                    event_type="send_order_email",
+                    aggregate_type="order",
+                    aggregate_id=order_id,
+                    operation_key=f"order:{order_id}:send-email",
+                    payload={"order_id": order_id, "recipient": customer_email},
+                )
+                await outbox_service.enqueue(
+                    db,
+                    session=session,
+                    event_type="analytics_order_completed",
+                    aggregate_type="order",
+                    aggregate_id=order_id,
+                    operation_key=f"order:{order_id}:analytics-order-completed",
+                    payload={"order_id": order_id},
+                )
+                await outbox_service.enqueue(
+                    db,
+                    session=session,
+                    event_type="meta_purchase_pending",
+                    aggregate_type="order",
+                    aggregate_id=order_id,
+                    operation_key=f"order:{order_id}:meta-purchase-pending",
+                    payload={"order_id": order_id, "currency": settings.META_CATALOG_CURRENCY, "event_id": f"purchase:{order_id}"},
+                )
+        created = await db["orders"].find_one({"idempotency_key": idempotency_key})
+        await _complete_order_idempotency(db, idempotency_key, str(created["_id"]))
+    except Exception:
+        await db["order_idempotency"].delete_one({"key": idempotency_key, "status": "in_progress"})
+        raise
     if request:
         await track_event(
             db,

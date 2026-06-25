@@ -14,7 +14,7 @@ from .loyalty import (
     LoyaltyTransactionOut,
     PaginatedLoyaltyTransactionsOut,
 )
-from .order import OrderActionReasonIn, OrderCreate, OrderItem, OrderOut, OrderRefundIn
+from .order import OrderActionReasonIn, OrderCreate, OrderItemCreate, OrderOut, OrderQuoteOut, OrderRefundIn
 from .order_history import OrderHistoryBase, OrderHistoryRead
 from .outbox_event import OutboxEventBase, OutboxEventRead
 from .product import ProductBase, ProductCreate, ProductOut, ProductUpdate
@@ -52,8 +52,9 @@ __all__ = [
     "PaginatedLoyaltyTransactionsOut",
     "OrderActionReasonIn",
     "OrderCreate",
-    "OrderItem",
+    "OrderItemCreate",
     "OrderOut",
+    "OrderQuoteOut",
     "OrderRefundIn",
     "OrderHistoryBase",
     "OrderHistoryRead",

@@ -86,7 +86,6 @@ class PackOrderComponent(BaseModel):
     color: str
     size: str
     qty: int = Field(1, ge=1)
-    unit_price: float = Field(..., ge=0)
 
 
 class PackOrderSelection(BaseModel):

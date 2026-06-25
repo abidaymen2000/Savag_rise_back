@@ -4,14 +4,18 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, Path, Request, 
 
 from app.db import get_db
 from app.dependencies import get_current_user, get_current_user_optional
-from app.schemas.order import OrderActionReasonIn, OrderCreate, OrderOut
+from app.schemas.order import OrderActionReasonIn, OrderCreate, OrderOut, OrderQuoteOut
 from app.services.services_store import order_service
 
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
-@router.post("/quote", summary="Calculer les totaux commande sans reserver stock ni promo")
+@router.post(
+    "/quote",
+    response_model=OrderQuoteOut,
+    summary="Calculer les totaux commande sans reserver stock ni promo",
+)
 async def api_quote_order(
     order_in: OrderCreate,
     request: Request,
@@ -21,12 +25,20 @@ async def api_quote_order(
     return await order_service.quote_order(db, order_in, request, current_user)
 
 
-@router.post("/", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=OrderOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Idempotency-Key manquant ou payload invalide"},
+        409: {"description": "Conflit d'idempotence: payload different ou requete deja en cours"},
+    },
+)
 async def api_create_order(
     order_in: OrderCreate,
     background_tasks: BackgroundTasks,
     request: Request,
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+    idempotency_key: Annotated[str, Header(..., alias="Idempotency-Key", description="Cle d'idempotence obligatoire pour la creation de commande")],
     db=Depends(get_db),
     current_user=Depends(get_current_user_optional),
 ):
