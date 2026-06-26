@@ -205,7 +205,7 @@ class OrderContractUnitTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with patch.object(order_domain_service, "_find_product_snapshot", side_effect=fake_find_product_snapshot):
-            with self.assertRaisesRegex(InsufficientStockError, "Stock insuffisant pour Black/M"):
+            with self.assertRaisesRegex(InsufficientStockError, "Demande=2, disponible=1, produit=prod-1"):
                 await order_domain_service.quote_order(fake_db, order_in, None)
 
     async def test_same_idempotency_key_same_payload_returns_existing_order(self):

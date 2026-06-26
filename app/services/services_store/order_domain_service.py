@@ -88,6 +88,13 @@ def _round_money(value: float) -> float:
     return round(float(value), 2)
 
 
+def _stock_insufficient_detail(*, product_id: str, color: str, size: str, requested_qty: int, available_qty: int) -> str:
+    return (
+        f"Stock insuffisant pour {color}/{size}. "
+        f"Demande={requested_qty}, disponible={available_qty}, produit={product_id}"
+    )
+
+
 def _distribute_discount(lines: list[dict[str, Any]], discount_total: float) -> None:
     discount_total = _round_money(discount_total)
     if discount_total <= 0 or not lines:
@@ -162,7 +169,15 @@ async def _build_order_materialization(db, order_in) -> dict:
         unit_price = float(product["price"])
         qty = int(item.qty)
         if int(variant_row["stock_available"]) < qty:
-            raise InsufficientStockError(f"Stock insuffisant pour {item.color}/{item.size}")
+            raise InsufficientStockError(
+                _stock_insufficient_detail(
+                    product_id=item.product_id,
+                    color=item.color,
+                    size=item.size,
+                    requested_qty=qty,
+                    available_qty=int(variant_row["stock_available"]),
+                )
+            )
         line_total = _round_money(unit_price * qty)
         subtotal += line_total
         snapshot = {
@@ -219,7 +234,15 @@ async def _build_order_materialization(db, order_in) -> dict:
             unit_price = float(product["price"])
             line_qty = int(selection.qty) * int(component.get("qty", 1) or 1) * int(item.qty)
             if int(variant_row["stock_available"]) < line_qty:
-                raise InsufficientStockError(f"Stock insuffisant pour {item.color}/{item.size}")
+                raise InsufficientStockError(
+                    _stock_insufficient_detail(
+                        product_id=item.product_id,
+                        color=item.color,
+                        size=item.size,
+                        requested_qty=line_qty,
+                        available_qty=int(variant_row["stock_available"]),
+                    )
+                )
             line_total = _round_money(unit_price * line_qty)
             pack_original += line_total
             key = (item.product_id, item.color, item.size)
@@ -415,7 +438,15 @@ async def _reserve_allocation(session, db, allocation: dict, order_id: str, orde
     qty = int(allocation["qty"])
     current = await _load_variant_size(session, db, allocation)
     if current["stock_available"] < qty:
-        raise InsufficientStockError(f"Stock insuffisant pour {allocation['color']}/{allocation['size']}")
+        raise InsufficientStockError(
+            _stock_insufficient_detail(
+                product_id=allocation["product_id"],
+                color=allocation["color"],
+                size=allocation["size"],
+                requested_qty=qty,
+                available_qty=int(current["stock_available"]),
+            )
+        )
     result = await db["products"].update_one(
         {
             "_id": _parse_oid(allocation["product_id"], "Produit ID"),
@@ -426,7 +457,15 @@ async def _reserve_allocation(session, db, allocation: dict, order_id: str, orde
         session=session,
     )
     if result.modified_count == 0:
-        raise InsufficientStockError(f"Stock insuffisant pour {allocation['color']}/{allocation['size']}")
+        raise InsufficientStockError(
+            _stock_insufficient_detail(
+                product_id=allocation["product_id"],
+                color=allocation["color"],
+                size=allocation["size"],
+                requested_qty=qty,
+                available_qty=int(current["stock_available"]),
+            )
+        )
     await _insert_inventory_movement(
         session,
         db,
