@@ -2,6 +2,7 @@
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
+from app.integrations.meta.schemas import MetaEventContextIn
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -9,6 +10,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    meta: Optional[MetaEventContextIn] = None
     
 class UserOut(UserBase):
     id: str

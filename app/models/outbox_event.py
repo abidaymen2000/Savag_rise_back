@@ -12,13 +12,18 @@ class OutboxEventDB(BaseModel):
     aggregate_type: str
     aggregate_id: str
     operation_key: str
+    provider: Optional[str] = None
+    event_name: Optional[str] = None
+    event_id: Optional[str] = None
     payload: dict[str, Any] = Field(default_factory=dict)
+    payload_json: dict[str, Any] = Field(default_factory=dict)
     status: str
     attempts: int = 0
     next_retry_at: Optional[datetime] = None
     last_error: Optional[str] = None
     created_at: datetime
     processed_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
 
     class Config:
         validate_by_name = True

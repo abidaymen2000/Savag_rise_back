@@ -19,6 +19,8 @@ async def create_user(db, user_in: UserCreate):
     }
     if user_in.full_name:
         doc["full_name"] = user_in.full_name
+    if user_in.meta:
+        doc["meta_context"] = user_in.meta.model_dump(exclude_none=True)
     res = await db["users"].insert_one(doc)
     return await db["users"].find_one({"_id": res.inserted_id})
 

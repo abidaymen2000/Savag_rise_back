@@ -36,6 +36,7 @@ class OrderDB(BaseModel):
     shipping_rate_name: Optional[str] = None
     total_amount: float
     refunded_amount: float = 0
+    meta_context: Optional[dict[str, Any]] = None
     status: str
     order_status: str
     idempotency_key: Optional[str] = None

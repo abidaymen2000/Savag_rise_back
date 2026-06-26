@@ -94,7 +94,16 @@ COLLECTION_INDEXES: dict[str, list[dict[str, Any]]] = {
     ],
     "outbox_events": [
         {"keys": "operation_key", "options": {"unique": True, "background": True}},
+        {
+            "keys": [("provider", 1), ("event_id", 1)],
+            "options": {
+                "unique": True,
+                "background": True,
+                "partialFilterExpression": {"provider": {"$type": "string"}, "event_id": {"$type": "string"}},
+            },
+        },
         {"keys": [("status", 1), ("next_retry_at", 1)], "options": {"background": True}},
+        {"keys": [("provider", 1), ("status", 1), ("next_retry_at", 1)], "options": {"background": True}},
         {"keys": [("aggregate_type", 1), ("aggregate_id", 1)], "options": {"background": True}},
     ],
     "reviews": [

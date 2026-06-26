@@ -13,6 +13,8 @@ from app.analytics.service import track_event
 from app.config import settings
 from app.crud import users as user_crud
 from app.schemas.user import UserOut
+from app.integrations.meta import build_meta_context, enqueue_complete_registration_event, process_meta_outbox_operation
+from app.integrations.meta.schemas import MetaEventContextIn
 from app.services.services_store.email import send_email
 
 
@@ -61,6 +63,7 @@ def user_out(user: dict) -> UserOut:
 async def signup(db, user_in, background_tasks: BackgroundTasks, request: Request) -> UserOut:
     if await user_crud.get_user_by_email(db, user_in.email):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cet email est deja utilise.")
+    user_in.meta = MetaEventContextIn.model_validate(build_meta_context(request, user_in.meta).model_dump(exclude_none=True))
     created = await user_crud.create_user(db, user_in)
     user_id = str(created["_id"])
     token = create_access_token(user_id, timedelta(hours=1))
@@ -73,6 +76,8 @@ async def signup(db, user_in, background_tasks: BackgroundTasks, request: Reques
         f"{verify_link}\n\nCe lien expire dans 1 heure.\n\nL'equipe Savage Rise"
     )
     background_tasks.add_task(send_email, subject="Bienvenue chez Savage Rise - Verifiez votre email", recipient=user_in.email, body=text_body, html=html_body)
+    if await enqueue_complete_registration_event(db, created):
+        background_tasks.add_task(process_meta_outbox_operation, db, f"meta:registration:{user_id}")
     await track_event(db, "account_created", user_id=user_id, metadata={"email_domain": user_in.email.split("@")[-1]}, request=request)
     return user_out(created)
 

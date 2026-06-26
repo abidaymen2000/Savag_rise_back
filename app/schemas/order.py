@@ -4,6 +4,7 @@ from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from app.config import settings
+from app.integrations.meta.schemas import MetaEventContextIn
 from app.schemas.pack import PackOrderSelection
 
 
@@ -26,7 +27,7 @@ FULFILLMENT_STATUS_VALUES = Literal["unfulfilled", "reserved", "processing", "fu
 
 class ShippingInfo(BaseModel):
     full_name: str = Field(..., example="Jean Dupont")
-    email: EmailStr = Field(..., example="jean@example.com")
+    email: Optional[EmailStr] = Field(None, example="jean@example.com")
     phone: str = Field(..., example="+216 21 461 637")
     address_line1: str = Field(..., example="12 rue de la Paix")
     address_line2: str | None = Field(None, example="Batiment B, 2e etage")
@@ -59,6 +60,7 @@ class OrderCreate(BaseModel):
     promo_code: Optional[str] = None
     loyalty_points_to_use: int = Field(0, ge=0)
     pack_items: List[PackOrderSelection] = Field(default_factory=list)
+    meta: Optional[MetaEventContextIn] = None
 
 
 class InventoryAllocationOut(BaseModel):

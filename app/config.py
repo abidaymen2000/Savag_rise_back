@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     META_CATALOG_BRAND: str = "Savage Rise"
     META_CATALOG_CURRENCY: str = "TND"
     META_PRODUCT_PATH_TEMPLATE: str = "/products/{id}"
+    META_PIXEL_ID: str | None = None
+    META_CONVERSIONS_API_TOKEN: SecretStr | None = None
+    META_CAPI_ENABLED: bool = False
+    META_GRAPH_API_VERSION: str = "v23.0"
+    META_TEST_EVENT_CODE: str | None = None
     
     # 🔥 Ajoutez ces lignes pour ImageKit 🔥
     imagekit_public_key: SecretStr
