@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     META_CAPI_ENABLED: bool = False
     META_GRAPH_API_VERSION: str = "v23.0"
     META_TEST_EVENT_CODE: str | None = None
+    META_OUTBOX_POLL_INTERVAL_SECONDS: int = 15
+    META_OUTBOX_LOCK_TIMEOUT_SECONDS: int = 120
+    META_OUTBOX_MAX_ATTEMPTS: int = 5
+    META_OUTBOX_MAX_BACKOFF_SECONDS: int = 3600
+    TRUST_PROXY_HEADERS: bool = True
+    TRUSTED_PROXY_HOPS: int = 1
+    REQUIRE_MONGO_TRANSACTIONS: bool = True
     
     # 🔥 Ajoutez ces lignes pour ImageKit 🔥
     imagekit_public_key: SecretStr

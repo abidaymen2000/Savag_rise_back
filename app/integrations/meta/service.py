@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import os
+import socket
+import uuid
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
@@ -23,7 +26,7 @@ from app.integrations.meta.hashing import (
     normalize_phone,
     normalized_sha256,
 )
-from app.integrations.meta.schemas import MetaEventContext, MetaEventContextIn, MetaEventData, MetaEventsRequest
+from app.integrations.meta.schemas import MetaEventContext, MetaEventData, MetaEventsRequest
 from app.services.services_store import outbox_service
 
 
@@ -59,6 +62,11 @@ def _decimal_to_number(value: Decimal) -> float:
     return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+def build_meta_worker_id(prefix: str = "meta-worker") -> str:
+    dyno = os.getenv("DYNO", "local")
+    return f"{prefix}:{dyno}:{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+
+
 def build_meta_context(request: Optional[Request], incoming: Optional[dict] = None) -> MetaEventContext:
     if incoming and hasattr(incoming, "model_dump"):
         payload = incoming.model_dump(exclude_none=True)
@@ -73,6 +81,25 @@ def build_meta_context(request: Optional[Request], incoming: Optional[dict] = No
         client_ip_address=get_client_ip(request),
         client_user_agent=request.headers.get("user-agent") if request else None,
     )
+
+
+def persisted_meta_context(context: MetaEventContext) -> dict[str, str]:
+    payload = {
+        "event_source_url": context.event_source_url,
+        "fbp": context.fbp,
+        "fbc": context.fbc,
+        "fbclid": context.fbclid,
+    }
+    return {key: value for key, value in payload.items() if value}
+
+
+def _merged_meta_context(stored: dict | None, override: MetaEventContext | None) -> MetaEventContext:
+    base = MetaEventContext.model_validate(stored or {})
+    if not override:
+        return base
+    merged = base.model_dump(exclude_none=True)
+    merged.update(override.model_dump(exclude_none=True))
+    return MetaEventContext.model_validate(merged)
 
 
 def _build_user_data(
@@ -108,13 +135,13 @@ def _build_user_data(
     return user_data
 
 
-def build_purchase_payload(order: dict) -> dict:
+def build_purchase_payload(order: dict, *, meta_context: MetaEventContext | None = None) -> dict:
     order_id = str(order["_id"])
     shipping = order.get("shipping") or {}
     first_name, last_name = _split_full_name(shipping.get("full_name"))
-    context = MetaEventContext.model_validate(order.get("meta_context") or {})
+    context = _merged_meta_context(order.get("meta_context"), meta_context)
     user_data = _build_user_data(
-        email=order.get("user_email") or shipping.get("email"),
+        email=shipping.get("email") or order.get("user_email"),
         phone=shipping.get("phone"),
         first_name=first_name,
         last_name=last_name,
@@ -155,9 +182,9 @@ def build_purchase_payload(order: dict) -> dict:
     return payload.model_dump(exclude_none=True)
 
 
-def build_complete_registration_payload(user: dict) -> dict:
+def build_complete_registration_payload(user: dict, *, meta_context: MetaEventContext | None = None) -> dict:
     first_name, last_name = _split_full_name(user.get("full_name"))
-    context = MetaEventContext.model_validate(user.get("meta_context") or {})
+    context = _merged_meta_context(user.get("meta_context"), meta_context)
     user_data = _build_user_data(
         email=user.get("email"),
         phone=user.get("phone"),
@@ -182,11 +209,11 @@ def build_complete_registration_payload(user: dict) -> dict:
     return payload.model_dump(exclude_none=True)
 
 
-async def enqueue_purchase_event(db, order: dict, *, session=None) -> bool:
+async def enqueue_purchase_event(db, order: dict, *, session=None, meta_context: MetaEventContext | None = None) -> bool:
     if not is_meta_enabled():
         return False
     order_id = str(order["_id"])
-    payload = {"order_id": order_id}
+    payload = build_purchase_payload(order, meta_context=meta_context)
     return await outbox_service.enqueue(
         db,
         session=session,
@@ -194,7 +221,7 @@ async def enqueue_purchase_event(db, order: dict, *, session=None) -> bool:
         aggregate_type="order",
         aggregate_id=order_id,
         operation_key=f"meta:purchase:{order_id}",
-        payload=payload,
+        payload={"order_id": order_id},
         provider=META_PROVIDER,
         event_name="Purchase",
         event_id=f"purchase:{order_id}",
@@ -202,18 +229,18 @@ async def enqueue_purchase_event(db, order: dict, *, session=None) -> bool:
     )
 
 
-async def enqueue_complete_registration_event(db, user: dict) -> bool:
+async def enqueue_complete_registration_event(db, user: dict, *, meta_context: MetaEventContext | None = None) -> bool:
     if not is_meta_enabled():
         return False
     user_id = str(user["_id"])
-    payload = {"user_id": user_id}
+    payload = build_complete_registration_payload(user, meta_context=meta_context)
     return await outbox_service.enqueue(
         db,
         event_type="meta_complete_registration_pending",
         aggregate_type="user",
         aggregate_id=user_id,
         operation_key=f"meta:registration:{user_id}",
-        payload=payload,
+        payload={"user_id": user_id},
         provider=META_PROVIDER,
         event_name="CompleteRegistration",
         event_id=f"registration:{user_id}",
@@ -222,28 +249,18 @@ async def enqueue_complete_registration_event(db, user: dict) -> bool:
 
 
 async def _send_meta_event_for_outbox(db, outbox_doc: dict) -> dict:
-    aggregate_type = outbox_doc.get("aggregate_type")
-    aggregate_id = outbox_doc.get("aggregate_id")
-    if aggregate_type == "order":
-        order = await db["orders"].find_one({"_id": outbox_service.parse_object_id(aggregate_id)})
-        if not order:
-            raise MetaPermanentError("Order not found")
-        payload = build_purchase_payload(order)
-    elif aggregate_type == "user":
-        user = await db["users"].find_one({"_id": outbox_service.parse_object_id(aggregate_id)})
-        if not user:
-            raise MetaPermanentError("User not found")
-        payload = build_complete_registration_payload(user)
-    else:
-        raise MetaPermanentError("Unsupported aggregate type")
+    payload = outbox_doc.get("payload_json")
+    if not payload:
+        raise MetaPermanentError("Meta payload missing")
     client = MetaConversionsApiClient()
     return await client.send_events(payload)
 
 
-async def process_meta_outbox_operation(db, operation_key: str) -> bool:
+async def process_meta_outbox_operation(db, operation_key: str, worker_id: str | None = None) -> bool:
     if not is_meta_enabled():
         return False
-    event = await outbox_service.claim_event(db, operation_key=operation_key, provider=META_PROVIDER)
+    worker = worker_id or build_meta_worker_id("meta-once")
+    event = await outbox_service.claim_event(db, operation_key=operation_key, provider=META_PROVIDER, worker_id=worker)
     if not event:
         return False
     try:
@@ -252,18 +269,24 @@ async def process_meta_outbox_operation(db, operation_key: str) -> bool:
         await outbox_service.mark_failed(db, event["_id"], last_error=str(exc), retryable=False)
         return False
     except (MetaRetryableError, MetaDisabledError) as exc:
-        await outbox_service.mark_failed(db, event["_id"], last_error=str(exc), retryable=True)
+        await outbox_service.mark_failed(
+            db,
+            event["_id"],
+            last_error=str(exc),
+            retryable=True,
+            retry_after_seconds=getattr(exc, "retry_after_seconds", None),
+        )
         return False
     await outbox_service.mark_sent(db, event["_id"])
     return True
 
 
-async def process_due_meta_events(db, *, limit: int = 10) -> int:
+async def process_due_meta_events(db, *, limit: int = 10, worker_id: str) -> int:
     if not is_meta_enabled():
         return 0
     processed = 0
     while processed < limit:
-        event = await outbox_service.claim_next_due_event(db, provider=META_PROVIDER)
+        event = await outbox_service.claim_next_due_event(db, provider=META_PROVIDER, worker_id=worker_id)
         if not event:
             break
         try:
@@ -271,19 +294,27 @@ async def process_due_meta_events(db, *, limit: int = 10) -> int:
         except MetaPermanentError as exc:
             await outbox_service.mark_failed(db, event["_id"], last_error=str(exc), retryable=False)
         except (MetaRetryableError, MetaDisabledError) as exc:
-            await outbox_service.mark_failed(db, event["_id"], last_error=str(exc), retryable=True)
+            await outbox_service.mark_failed(
+                db,
+                event["_id"],
+                last_error=str(exc),
+                retryable=True,
+                retry_after_seconds=getattr(exc, "retry_after_seconds", None),
+            )
         else:
             await outbox_service.mark_sent(db, event["_id"])
         processed += 1
     return processed
 
 
-async def run_meta_outbox_loop(db, *, poll_interval_seconds: int = 15) -> None:
+async def run_meta_outbox_loop(db, *, poll_interval_seconds: int | None = None, worker_id: str | None = None) -> None:
+    loop_poll_interval = poll_interval_seconds or settings.META_OUTBOX_POLL_INTERVAL_SECONDS
+    loop_worker_id = worker_id or build_meta_worker_id()
     while True:
         try:
-            await process_due_meta_events(db, limit=10)
+            await process_due_meta_events(db, limit=10, worker_id=loop_worker_id)
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("Unexpected error while processing Meta outbox")
-        await asyncio.sleep(poll_interval_seconds)
+        await asyncio.sleep(loop_poll_interval)

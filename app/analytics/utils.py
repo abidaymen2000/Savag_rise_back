@@ -1,3 +1,4 @@
+import ipaddress
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
@@ -5,6 +6,7 @@ from urllib.parse import urlparse
 from fastapi import Request
 
 from app.analytics.events import ALLOWED_ANALYTICS_EVENTS
+from app.config import settings
 
 SOCIAL_SOURCES = {
     "instagram": ("instagram.", "l.instagram.com"),
@@ -22,16 +24,43 @@ def is_allowed_event(event_name: Optional[str]) -> bool:
     return bool(event_name and event_name in ALLOWED_ANALYTICS_EVENTS)
 
 
+def _parse_ip(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    try:
+        return str(ipaddress.ip_address(candidate))
+    except ValueError:
+        return None
+
+
+def _is_trusted_proxy_host(host: Optional[str]) -> bool:
+    parsed = _parse_ip(host)
+    if not parsed:
+        return False
+    ip_obj = ipaddress.ip_address(parsed)
+    return ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local
+
+
 def get_client_ip(request: Optional[Request]) -> Optional[str]:
     if not request:
         return None
+    direct_host = _parse_ip(request.client.host) if request.client else None
     forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip.strip()
-    return request.client.host if request.client else None
+    if settings.TRUST_PROXY_HEADERS and forwarded_for and _is_trusted_proxy_host(direct_host):
+        forwarded_chain = [_parse_ip(part) for part in forwarded_for.split(",")]
+        forwarded_chain = [part for part in forwarded_chain if part]
+        if forwarded_chain:
+            index = max(len(forwarded_chain) - settings.TRUSTED_PROXY_HOPS, 0)
+            selected = forwarded_chain[index]
+            if selected:
+                return selected
+    real_ip = _parse_ip(request.headers.get("x-real-ip"))
+    if real_ip and _is_trusted_proxy_host(direct_host):
+        return real_ip
+    return direct_host
 
 
 def request_metadata(request: Optional[Request]) -> dict[str, Optional[str]]:

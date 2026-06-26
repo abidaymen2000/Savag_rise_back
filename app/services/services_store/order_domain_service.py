@@ -51,6 +51,7 @@ from app.domain.order_errors import (
 )
 from app.domain.order_state_machine import ensure_order_transition, fulfillment_status_for_order_status, payment_status_after_refund
 from app.integrations.meta import build_meta_context, enqueue_purchase_event, process_meta_outbox_operation
+from app.integrations.meta.service import persisted_meta_context
 from app.services.services_store import outbox_service
 from app.services.services_store.loyalty_service import (
     add_loyalty_transaction,
@@ -539,12 +540,13 @@ async def create_order(db, order_in, background_tasks, request, current_user, *,
         customer_email = current_user["email"] if current_user else order_in.shipping.email
         now = datetime.utcnow()
         meta_context = build_meta_context(request, order_in.meta)
+        meta_enqueued = False
         order_doc = {
             "user_id": user_id,
             "user_email": customer_email,
             "is_guest": current_user is None,
             "shipping": order_in.shipping.model_dump(),
-            "meta_context": meta_context.model_dump(exclude_none=True),
+            "meta_context": persisted_meta_context(meta_context),
             "items": [item.model_dump() for item in order_in.items],
             "pack_items": quote["pack_items"],
             "item_snapshots": quote["item_snapshots"],
@@ -634,7 +636,12 @@ async def create_order(db, order_in, background_tasks, request, current_user, *,
                     operation_key=f"order:{order_id}:analytics-order-completed",
                     payload={"order_id": order_id},
                 )
-                await enqueue_purchase_event(db, {"_id": insert_result.inserted_id, **order_doc}, session=session)
+                meta_enqueued = await enqueue_purchase_event(
+                    db,
+                    {"_id": insert_result.inserted_id, **order_doc},
+                    session=session,
+                    meta_context=meta_context,
+                )
         created = await db["orders"].find_one({"idempotency_key": idempotency_key})
         await _complete_order_idempotency(db, idempotency_key, str(created["_id"]))
     except Exception:
@@ -653,7 +660,7 @@ async def create_order(db, order_in, background_tasks, request, current_user, *,
             },
             request=request,
         )
-    if background_tasks:
+    if background_tasks and meta_enqueued:
         background_tasks.add_task(process_meta_outbox_operation, db, f"meta:purchase:{created['_id']}")
     return _order_doc_to_out(created)
 

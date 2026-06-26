@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.db import db
-from app.integrations.meta import run_meta_outbox_loop
+from app.integrations.meta import build_meta_worker_id, run_meta_outbox_loop
 from app.routers.routers_cms import admin_cms_pages, admin_comments, admin_vlog, drop_countdown, header_video
 from app.routers.routers_erp import (
     admin_admins,
@@ -85,7 +85,14 @@ async def on_startup():
     # Crée collections et index avant que l'app n'accepte des requêtes
     await init_mongo()
     app.state.drop_countdown_task = asyncio.create_task(drop_countdown_monitor_loop())
-    app.state.meta_outbox_task = asyncio.create_task(run_meta_outbox_loop(db))
+    app.state.meta_worker_id = build_meta_worker_id()
+    app.state.meta_outbox_task = asyncio.create_task(
+        run_meta_outbox_loop(
+            db,
+            poll_interval_seconds=settings.META_OUTBOX_POLL_INTERVAL_SECONDS,
+            worker_id=app.state.meta_worker_id,
+        )
+    )
 
 
 @app.on_event("shutdown")
@@ -96,6 +103,10 @@ async def on_shutdown():
     meta_task = getattr(app.state, "meta_outbox_task", None)
     if meta_task:
         meta_task.cancel()
+        try:
+            await meta_task
+        except asyncio.CancelledError:
+            pass
 
 # enregistrement des routes
 app.include_router(upload.router)

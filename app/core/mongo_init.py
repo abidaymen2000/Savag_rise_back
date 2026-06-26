@@ -104,6 +104,7 @@ COLLECTION_INDEXES: dict[str, list[dict[str, Any]]] = {
         },
         {"keys": [("status", 1), ("next_retry_at", 1)], "options": {"background": True}},
         {"keys": [("provider", 1), ("status", 1), ("next_retry_at", 1)], "options": {"background": True}},
+        {"keys": [("provider", 1), ("status", 1), ("locked_at", 1)], "options": {"background": True}},
         {"keys": [("aggregate_type", 1), ("aggregate_id", 1)], "options": {"background": True}},
     ],
     "reviews": [
