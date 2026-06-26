@@ -120,6 +120,87 @@ def _validate_requested_quantity(*, product_id: str, color: str, size: str, requ
         )
 
 
+def _variant_exists_query(*, product_oid: ObjectId, color: str, size: str) -> dict[str, Any]:
+    return {
+        "_id": product_oid,
+        "variants": {
+            "$elemMatch": {
+                "color": color,
+                "sizes": {"$elemMatch": {"size": size}},
+            }
+        },
+    }
+
+
+def _reserve_stock_update_pipeline(*, color: str, size: str, requested_qty: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "$set": {
+                "variants": {
+                    "$map": {
+                        "input": "$variants",
+                        "as": "variant",
+                        "in": {
+                            "$cond": [
+                                {"$eq": ["$$variant.color", color]},
+                                {
+                                    "$mergeObjects": [
+                                        "$$variant",
+                                        {
+                                            "sizes": {
+                                                "$map": {
+                                                    "input": "$$variant.sizes",
+                                                    "as": "size_row",
+                                                    "in": {
+                                                        "$cond": [
+                                                            {"$eq": ["$$size_row.size", size]},
+                                                            {
+                                                                "$cond": [
+                                                                    {
+                                                                        "$gte": [
+                                                                            {
+                                                                                "$subtract": [
+                                                                                    {"$ifNull": ["$$size_row.stock_on_hand", 0]},
+                                                                                    {"$ifNull": ["$$size_row.stock_reserved", 0]},
+                                                                                ]
+                                                                            },
+                                                                            requested_qty,
+                                                                        ]
+                                                                    },
+                                                                    {
+                                                                        "$mergeObjects": [
+                                                                            "$$size_row",
+                                                                            {
+                                                                                "stock_reserved": {
+                                                                                    "$add": [
+                                                                                        {"$ifNull": ["$$size_row.stock_reserved", 0]},
+                                                                                        requested_qty,
+                                                                                    ]
+                                                                                }
+                                                                            },
+                                                                        ]
+                                                                    },
+                                                                    "$$size_row",
+                                                                ]
+                                                            },
+                                                            "$$size_row",
+                                                        ]
+                                                    },
+                                                }
+                                            }
+                                        },
+                                    ]
+                                },
+                                "$$variant",
+                            ]
+                        },
+                    }
+                }
+            }
+        }
+    ]
+
+
 def _distribute_discount(lines: list[dict[str, Any]], discount_total: float) -> None:
     discount_total = _round_money(discount_total)
     if discount_total <= 0 or not lines:
@@ -455,6 +536,7 @@ async def _load_variant_size(session, db, allocation: dict) -> dict:
 
 async def _reserve_allocation(session, db, allocation: dict, order_id: str, order_item_key: str):
     qty = int(allocation["qty"])
+    product_oid = _parse_oid(allocation["product_id"], "Produit ID")
     for attempt in range(2):
         current = await _load_variant_size(session, db, allocation)
         _validate_requested_quantity(
@@ -478,20 +560,33 @@ async def _reserve_allocation(session, db, allocation: dict, order_id: str, orde
             int(current["stock_available"]),
             attempt + 1,
         )
+        reservation_filter = _variant_exists_query(
+            product_oid=product_oid,
+            color=allocation["color"],
+            size=allocation["size"],
+        )
+        reservation_update = _reserve_stock_update_pipeline(
+            color=allocation["color"],
+            size=allocation["size"],
+            requested_qty=qty,
+        )
         result = await db["products"].update_one(
-            {
-                "_id": _parse_oid(allocation["product_id"], "Produit ID"),
-            },
-            {"$inc": {"variants.$[v].sizes.$[s].stock_reserved": qty}},
-            array_filters=[
-                {"v.color": allocation["color"]},
-                {
-                    "s.size": allocation["size"],
-                    "s.stock_on_hand": current["stock_on_hand"],
-                    "s.stock_reserved": current["stock_reserved"],
-                },
-            ],
+            reservation_filter,
+            reservation_update,
             session=session,
+        )
+        logger.warning(
+            "Atomic stock reservation attempt order_id=%s product_id=%s variant_id=%s color=%s size=%s requested_quantity=%s filter=%s update=%s matched_count=%s modified_count=%s",
+            order_id,
+            allocation["product_id"],
+            _variant_ref(product_id=allocation["product_id"], color=allocation["color"], size=allocation["size"]),
+            allocation["color"],
+            allocation["size"],
+            qty,
+            reservation_filter,
+            reservation_update,
+            result.matched_count,
+            result.modified_count,
         )
         if result.modified_count == 1:
             break
@@ -515,13 +610,24 @@ async def _reserve_allocation(session, db, allocation: dict, order_id: str, orde
                 requested_qty=qty,
                 available_qty=int(latest["stock_available"]),
             )
+        if result.matched_count == 0:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                {
+                    "code": "VARIANT_NOT_FOUND",
+                    "product_id": allocation["product_id"],
+                    "variant_id": _variant_ref(product_id=allocation["product_id"], color=allocation["color"], size=allocation["size"]),
+                    "color": allocation["color"],
+                    "size": allocation["size"],
+                },
+            )
         if attempt == 1:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
-                (
-                    f"Conflit de reservation de stock pour {allocation['color']}/{allocation['size']}. "
-                    f"Demande={qty}, disponible={int(latest['stock_available'])}, produit={allocation['product_id']}"
-                ),
+                {
+                    "code": "STOCK_RESERVATION_CONFLICT",
+                    "message": "Le stock est disponible mais la reservation atomique a echoue.",
+                },
             )
     await _insert_inventory_movement(
         session,

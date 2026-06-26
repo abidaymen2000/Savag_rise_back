@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from bson import ObjectId
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from app.domain.order_errors import InvalidIdempotencyKeyReuseError
@@ -21,8 +21,9 @@ class FakeInsertResult:
 
 
 class FakeUpdateResult:
-    def __init__(self, modified_count=1):
+    def __init__(self, modified_count=1, matched_count=None):
         self.modified_count = modified_count
+        self.matched_count = modified_count if matched_count is None else matched_count
 
 
 class FakeCollection:
@@ -74,8 +75,8 @@ class FakeDb:
 
 
 class ReserveOnlyDb:
-    def __init__(self, modified_counts):
-        self.products = SimpleNamespace(update_one=AsyncMock(side_effect=[FakeUpdateResult(count) for count in modified_counts]))
+    def __init__(self, results):
+        self.products = SimpleNamespace(update_one=AsyncMock(side_effect=[FakeUpdateResult(**result) for result in results]))
 
     def __getitem__(self, name):
         if name == "products":
@@ -310,7 +311,10 @@ class OrderContractUnitTests(unittest.IsolatedAsyncioTestCase):
                 await order_domain_service.create_order(fake_db, order_in, None, None, None, idempotency_key="idem-3")
 
     async def test_reserve_allocation_retries_once_before_failing(self):
-        db = ReserveOnlyDb([0, 1])
+        db = ReserveOnlyDb([
+            {"matched_count": 1, "modified_count": 0},
+            {"matched_count": 1, "modified_count": 1},
+        ])
         allocation = {"product_id": "prod-1", "color": "Black", "size": "S", "qty": 1}
         session = object()
 
@@ -330,6 +334,30 @@ class OrderContractUnitTests(unittest.IsolatedAsyncioTestCase):
             await order_domain_service._reserve_allocation(session, db, allocation, "order-1", "0")
 
         self.assertEqual(db.products.update_one.await_count, 2)
+
+    async def test_reserve_allocation_reports_variant_not_found_when_atomic_filter_matches_nothing(self):
+        db = ReserveOnlyDb([
+            {"matched_count": 0, "modified_count": 0},
+        ])
+        allocation = {"product_id": "prod-1", "color": "Black", "size": "S", "qty": 1}
+        session = object()
+
+        with (
+            patch.object(
+                order_domain_service,
+                "_load_variant_size",
+                AsyncMock(side_effect=[
+                    {"stock_on_hand": 5, "stock_reserved": 0, "stock_available": 5},
+                    {"stock_on_hand": 5, "stock_reserved": 0, "stock_available": 5},
+                ]),
+            ),
+            patch.object(order_domain_service, "_parse_oid", return_value=ObjectId()),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await order_domain_service._reserve_allocation(session, db, allocation, "order-1", "0")
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(ctx.exception.detail["code"], "VARIANT_NOT_FOUND")
 
 
 class OrderSchemaContractTests(unittest.TestCase):
