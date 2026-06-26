@@ -73,6 +73,16 @@ class FakeDb:
         return self.collections[name]
 
 
+class ReserveOnlyDb:
+    def __init__(self, modified_counts):
+        self.products = SimpleNamespace(update_one=AsyncMock(side_effect=[FakeUpdateResult(count) for count in modified_counts]))
+
+    def __getitem__(self, name):
+        if name == "products":
+            return self.products
+        raise KeyError(name)
+
+
 class OrderContractUnitTests(unittest.IsolatedAsyncioTestCase):
     def _build_order_payload(self):
         return {
@@ -298,6 +308,28 @@ class OrderContractUnitTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(order_domain_service, "_payload_hash", return_value="hash-a"):
             with self.assertRaisesRegex(Exception, "deja en cours"):
                 await order_domain_service.create_order(fake_db, order_in, None, None, None, idempotency_key="idem-3")
+
+    async def test_reserve_allocation_retries_once_before_failing(self):
+        db = ReserveOnlyDb([0, 1])
+        allocation = {"product_id": "prod-1", "color": "Black", "size": "S", "qty": 1}
+        session = object()
+
+        with (
+            patch.object(
+                order_domain_service,
+                "_load_variant_size",
+                AsyncMock(side_effect=[
+                    {"stock_on_hand": 5, "stock_reserved": 0, "stock_available": 5},
+                    {"stock_on_hand": 5, "stock_reserved": 0, "stock_available": 5},
+                    {"stock_on_hand": 5, "stock_reserved": 0, "stock_available": 5},
+                ]),
+            ),
+            patch.object(order_domain_service, "_insert_inventory_movement", AsyncMock()),
+            patch.object(order_domain_service, "_parse_oid", return_value=ObjectId()),
+        ):
+            await order_domain_service._reserve_allocation(session, db, allocation, "order-1", "0")
+
+        self.assertEqual(db.products.update_one.await_count, 2)
 
 
 class OrderSchemaContractTests(unittest.TestCase):

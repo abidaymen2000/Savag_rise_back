@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from datetime import datetime
 from typing import Any, Optional
 
@@ -66,6 +67,9 @@ from app.services.services_store.meta_ids import meta_variant_content_id
 from app.services.services_store.order_history_service import append_history
 
 
+logger = logging.getLogger("order_domain_service")
+
+
 def _parse_oid(value: str, label: str = "ID") -> ObjectId:
     try:
         return ObjectId(value)
@@ -93,6 +97,27 @@ def _stock_insufficient_detail(*, product_id: str, color: str, size: str, reques
         f"Stock insuffisant pour {color}/{size}. "
         f"Demande={requested_qty}, disponible={available_qty}, produit={product_id}"
     )
+
+
+def _variant_ref(*, product_id: str, color: str, size: str) -> str:
+    return f"{product_id}:{color}:{size}"
+
+
+def _validate_requested_quantity(*, product_id: str, color: str, size: str, requested_qty: int, available_qty: int) -> None:
+    requested_qty = int(requested_qty)
+    available_qty = int(available_qty)
+    if requested_qty <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "La quantite doit etre superieure a zero")
+    if requested_qty > available_qty:
+        raise InsufficientStockError(
+            _stock_insufficient_detail(
+                product_id=product_id,
+                color=color,
+                size=size,
+                requested_qty=requested_qty,
+                available_qty=available_qty,
+            )
+        )
 
 
 def _distribute_discount(lines: list[dict[str, Any]], discount_total: float) -> None:
@@ -168,16 +193,13 @@ async def _build_order_materialization(db, order_in) -> dict:
         variant_row = _find_variant_or_fail(product, item.color, item.size)
         unit_price = float(product["price"])
         qty = int(item.qty)
-        if int(variant_row["stock_available"]) < qty:
-            raise InsufficientStockError(
-                _stock_insufficient_detail(
-                    product_id=item.product_id,
-                    color=item.color,
-                    size=item.size,
-                    requested_qty=qty,
-                    available_qty=int(variant_row["stock_available"]),
-                )
-            )
+        _validate_requested_quantity(
+            product_id=item.product_id,
+            color=item.color,
+            size=item.size,
+            requested_qty=qty,
+            available_qty=int(variant_row["stock_available"]),
+        )
         line_total = _round_money(unit_price * qty)
         subtotal += line_total
         snapshot = {
@@ -233,16 +255,13 @@ async def _build_order_materialization(db, order_in) -> dict:
             variant_row = _find_variant_or_fail(product, item.color, item.size)
             unit_price = float(product["price"])
             line_qty = int(selection.qty) * int(component.get("qty", 1) or 1) * int(item.qty)
-            if int(variant_row["stock_available"]) < line_qty:
-                raise InsufficientStockError(
-                    _stock_insufficient_detail(
-                        product_id=item.product_id,
-                        color=item.color,
-                        size=item.size,
-                        requested_qty=line_qty,
-                        available_qty=int(variant_row["stock_available"]),
-                    )
-                )
+            _validate_requested_quantity(
+                product_id=item.product_id,
+                color=item.color,
+                size=item.size,
+                requested_qty=line_qty,
+                available_qty=int(variant_row["stock_available"]),
+            )
             line_total = _round_money(unit_price * line_qty)
             pack_original += line_total
             key = (item.product_id, item.color, item.size)
@@ -436,36 +455,74 @@ async def _load_variant_size(session, db, allocation: dict) -> dict:
 
 async def _reserve_allocation(session, db, allocation: dict, order_id: str, order_item_key: str):
     qty = int(allocation["qty"])
-    current = await _load_variant_size(session, db, allocation)
-    if current["stock_available"] < qty:
-        raise InsufficientStockError(
-            _stock_insufficient_detail(
+    for attempt in range(2):
+        current = await _load_variant_size(session, db, allocation)
+        _validate_requested_quantity(
+            product_id=allocation["product_id"],
+            color=allocation["color"],
+            size=allocation["size"],
+            requested_qty=qty,
+            available_qty=int(current["stock_available"]),
+        )
+        logger.info(
+            "Stock reservation attempt order_id=%s idempotency_item=%s product_id=%s variant_id=%s color=%s size=%s requested_quantity=%s physical_stock=%s reserved_stock=%s available_stock=%s attempt=%s",
+            order_id,
+            order_item_key,
+            allocation["product_id"],
+            _variant_ref(product_id=allocation["product_id"], color=allocation["color"], size=allocation["size"]),
+            allocation["color"],
+            allocation["size"],
+            qty,
+            int(current["stock_on_hand"]),
+            int(current["stock_reserved"]),
+            int(current["stock_available"]),
+            attempt + 1,
+        )
+        result = await db["products"].update_one(
+            {
+                "_id": _parse_oid(allocation["product_id"], "Produit ID"),
+            },
+            {"$inc": {"variants.$[v].sizes.$[s].stock_reserved": qty}},
+            array_filters=[
+                {"v.color": allocation["color"]},
+                {
+                    "s.size": allocation["size"],
+                    "s.stock_on_hand": current["stock_on_hand"],
+                    "s.stock_reserved": current["stock_reserved"],
+                },
+            ],
+            session=session,
+        )
+        if result.modified_count == 1:
+            break
+        latest = await _load_variant_size(session, db, allocation)
+        logger.warning(
+            "Stock reservation write conflict order_id=%s product_id=%s variant_id=%s color=%s size=%s requested_quantity=%s precheck_available=%s postcheck_available=%s",
+            order_id,
+            allocation["product_id"],
+            _variant_ref(product_id=allocation["product_id"], color=allocation["color"], size=allocation["size"]),
+            allocation["color"],
+            allocation["size"],
+            qty,
+            int(current["stock_available"]),
+            int(latest["stock_available"]),
+        )
+        if int(latest["stock_available"]) < qty:
+            _validate_requested_quantity(
                 product_id=allocation["product_id"],
                 color=allocation["color"],
                 size=allocation["size"],
                 requested_qty=qty,
-                available_qty=int(current["stock_available"]),
+                available_qty=int(latest["stock_available"]),
             )
-        )
-    result = await db["products"].update_one(
-        {
-            "_id": _parse_oid(allocation["product_id"], "Produit ID"),
-            "variants.color": allocation["color"],
-        },
-        {"$inc": {"variants.$.sizes.$[s].stock_reserved": qty}},
-        array_filters=[{"s.size": allocation["size"], "s.stock_on_hand": current["stock_on_hand"], "s.stock_reserved": current["stock_reserved"]}],
-        session=session,
-    )
-    if result.modified_count == 0:
-        raise InsufficientStockError(
-            _stock_insufficient_detail(
-                product_id=allocation["product_id"],
-                color=allocation["color"],
-                size=allocation["size"],
-                requested_qty=qty,
-                available_qty=int(current["stock_available"]),
+        if attempt == 1:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                (
+                    f"Conflit de reservation de stock pour {allocation['color']}/{allocation['size']}. "
+                    f"Demande={qty}, disponible={int(latest['stock_available'])}, produit={allocation['product_id']}"
+                ),
             )
-        )
     await _insert_inventory_movement(
         session,
         db,
