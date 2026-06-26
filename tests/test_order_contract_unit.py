@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from pymongo.errors import DuplicateKeyError
 
 from app.domain.order_errors import InvalidIdempotencyKeyReuseError
+from app.domain.order_errors import InsufficientStockError
 from app.routers.routers_store.orders import router as orders_router
 from app.schemas.order import OrderCreate, OrderOut
 from app.schemas.variant import SizeStockOut
@@ -181,6 +182,31 @@ class OrderContractUnitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(quote["items"][1]["discount_amount"] + quote["items"][2]["discount_amount"], 10.0)
         self.assertEqual(len(fake_db["orders"].docs), 0)
         self.assertEqual(len(fake_db["order_idempotency"].docs), 0)
+
+    async def test_quote_fails_when_requested_quantity_exceeds_available_stock(self):
+        order_in = OrderCreate.model_validate(self._build_order_payload())
+        fake_db = FakeDb()
+
+        async def fake_find_product_snapshot(db, product_id):
+            return {
+                "_id": product_id,
+                "price": 50.0,
+                "sku": f"SKU-{product_id}",
+                "name": f"Product {product_id}",
+                "full_name": f"Product {product_id}",
+                "variants": [
+                    {
+                        "color": "Black",
+                        "sizes": [
+                            {"size": "M", "stock_on_hand": 1, "stock_reserved": 0},
+                        ],
+                    }
+                ],
+            }
+
+        with patch.object(order_domain_service, "_find_product_snapshot", side_effect=fake_find_product_snapshot):
+            with self.assertRaisesRegex(InsufficientStockError, "Stock insuffisant pour Black/M"):
+                await order_domain_service.quote_order(fake_db, order_in, None)
 
     async def test_same_idempotency_key_same_payload_returns_existing_order(self):
         order_id = ObjectId()

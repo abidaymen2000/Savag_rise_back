@@ -161,6 +161,8 @@ async def _build_order_materialization(db, order_in) -> dict:
         variant_row = _find_variant_or_fail(product, item.color, item.size)
         unit_price = float(product["price"])
         qty = int(item.qty)
+        if int(variant_row["stock_available"]) < qty:
+            raise InsufficientStockError(f"Stock insuffisant pour {item.color}/{item.size}")
         line_total = _round_money(unit_price * qty)
         subtotal += line_total
         snapshot = {
@@ -216,6 +218,8 @@ async def _build_order_materialization(db, order_in) -> dict:
             variant_row = _find_variant_or_fail(product, item.color, item.size)
             unit_price = float(product["price"])
             line_qty = int(selection.qty) * int(component.get("qty", 1) or 1) * int(item.qty)
+            if int(variant_row["stock_available"]) < line_qty:
+                raise InsufficientStockError(f"Stock insuffisant pour {item.color}/{item.size}")
             line_total = _round_money(unit_price * line_qty)
             pack_original += line_total
             key = (item.product_id, item.color, item.size)
